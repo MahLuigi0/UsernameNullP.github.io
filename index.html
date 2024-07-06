@@ -1,200 +1,367 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Sega Genesis Palette Editor</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sega Genesis Palette Viewer and Editor</title>
     <style>
-    body {
-            background-color: #333; /* Dark grey background */
-            color: #fff; /* White text color */
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f0f0f0;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .palette-section, .controls-section {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .palette-section {
+            width: 480px;
+            height: 400px;
+        }
+        #paletteDisplay {
+            height: 100%;
+            overflow-y: auto;
+        }
+        .palette-row {
+            display: flex;
         }
         .color-box {
-            width: 32px;
-            height: 32px;
+            width: 30px;
+            height: 30px;
+            display: inline-block;
+            cursor: pointer;
+        }
+        button, .file-upload-btn {
+            margin-top: 10px;
+            margin-right: 5px;
+            padding: 5px 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:disabled, #colorCountInput:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .file-upload-btn {
+            background-color: #2196F3;
             display: inline-block;
         }
-        .control-bar {
+        #fileInput {
             display: none;
-            margin-top: 8px;
         }
-        .slider {
-            width: 100px;
+        #colorEditor {
+            margin-top: 20px;
         }
-        .slider-label {
-            width: 20px;
-            display: inline-block;
+        #colorCountInput {
+            width: 50px;
+            margin-right: 5px;
+        }
+        input[type="range"] {
+            width: 100%;
         }
     </style>
 </head>
 <body>
-    <input type="file" id="fileInput" accept=".bin,.pal">
-    <div id="paletteContainer"></div>
-    <div id="controlBar" class="control-bar">
-        <div class="slider-label">Red: <span id="redValue">0</span></div>
-        <input id="redSlider" class="slider" type="range" min="0" max="14" step="2"><br>
-        <div class="slider-label">Green: <span id="greenValue">0</span></div>
-        <input id="greenSlider" class="slider" type="range" min="0" max="14" step="2"><br>
-        <div class="slider-label">Blue: <span id="blueValue">0</span></div>
-        <input id="blueSlider" class="slider" type="range" min="0" max="14" step="2">
+    <h1>Sega Genesis Palette Viewer and Editor</h1>
+    <div class="container">
+        <div class="palette-section">
+            <div id="paletteDisplay"></div>
+        </div>
+        <div class="controls-section">
+            <div id="colorEditor">
+                <h3>Edit Color</h3>
+                <div>R: <input type="range" id="redSlider" min="0" max="7" value="0"> <span id="redValue">1</span></div>
+                <div>G: <input type="range" id="greenSlider" min="0" max="7" value="0"> <span id="greenValue">1</span></div>
+                <div>B: <input type="range" id="blueSlider" min="0" max="7" value="0"> <span id="blueValue">1</span></div>
+            </div>
+            <div id="colorManagement">
+                <input type="number" id="colorCountInput" value="1" min="1">
+                <button id="addColorButton">Add Colors</button>
+                <button id="removeColorButton">Remove Colors</button>
+            </div>
+            <div id="historyManagement">
+                <button id="undoButton">Undo</button>
+                <button id="redoButton">Redo</button>
+            </div>
+            <button id="renderButton">Render to PNG</button>
+            <button id="saveButton">Save Palette</button>
+            <label for="fileInput" class="file-upload-btn">Upload Palette</label>
+            <input type="file" id="fileInput" accept=".pal,.bin">
+        </div>
     </div>
-    <button id="savePaletteButton">Export Palette</button>
-    <button id="exportPaletteButton">Export Palette as PNG</button>
 
     <script>
-        let currentColorBox = null;
-        let paletteData = new Uint8Array(128);
+        let inputFileName = '';
+        let paletteData = new Uint8Array(96);
+        let selectedColorIndex = -1;
+        let history = [];
+        let historyIndex = -1;
+        let isEditing = false;
+        let editTimeout = null;
 
-        document.getElementById('fileInput').addEventListener('change', function(e) {
-            const file = e.target.files[0];
+        const controls = ['addColorButton', 'removeColorButton', 'undoButton', 'redoButton', 
+                          'renderButton', 'saveButton', 'redSlider', 'greenSlider', 'blueSlider', 'colorCountInput'];
+
+        function updateUIState(fileLoaded) {
+            controls.forEach(id => document.getElementById(id).disabled = !fileLoaded);
+        }
+
+        updateUIState(false);
+
+        function isValidSegaGenesisPalette(arrayBuffer) {
+            const dataView = new DataView(arrayBuffer);
+            const colorCount = arrayBuffer.byteLength / 2;
+
+            for (let i = 0; i < colorCount; i++) {
+                const color = dataView.getUint16(i * 2, false);
+                const r = (color & 0x000E) >> 1;
+                const g = (color & 0x00E0) >> 5;
+                const b = (color & 0x0E00) >> 9;
+                if (r > 7 || g > 7 || b > 7) return false;
+            }
+            return true;
+        }
+
+        function saveState() {
+            if (history.length === 0 || !arraysEqual(paletteData, history[historyIndex])) {
+                history = history.slice(0, historyIndex + 1);
+                history.push(new Uint8Array(paletteData));
+                historyIndex++;
+                updateHistoryButtons();
+            }
+        }
+
+        function arraysEqual(a, b) {
+            return a.length === b.length && a.every((val, index) => val === b[index]);
+        }
+
+        function updateHistoryButtons() {
+            document.getElementById('undoButton').disabled = historyIndex <= 0;
+            document.getElementById('redoButton').disabled = historyIndex >= history.length - 1;
+        }
+
+        document.getElementById('fileInput').addEventListener('change', function(event) {
+            const file = event.target.files[0];
             if (file) {
+                inputFileName = file.name;
                 const reader = new FileReader();
 
                 reader.onload = function(e) {
-                    paletteData = new Uint8Array(e.target.result);
-                    const paletteContainer = document.getElementById('paletteContainer');
-                    paletteContainer.innerHTML = '';
-
-                    const numColors = paletteData.length / 2;
-                    const numRows = Math.ceil(numColors / 16);
-
-                    for (let row = 0; row < numRows; row++) {
-                        const rowContainer = document.createElement('div');
-                        rowContainer.className = 'palette-row';
-                        for (let col = 0; col < 16; col++) {
-                            const colorIndex = row * 16 + col;
-                            if (colorIndex < numColors) {
-                                const wordValue = (paletteData[colorIndex * 2] << 8) | paletteData[colorIndex * 2 + 1];
-                                const blue = (wordValue >> 8) & 0x0E;
-                                const green = (wordValue >> 4) & 0x0E;
-                                const red = wordValue & 0x0E;
-
-                                const colorBox = document.createElement('div');
-                                colorBox.className = 'color-box';
-                                colorBox.style.backgroundColor = `rgb(${red * 16}, ${green * 16}, ${blue * 16})`;
-
-                                colorBox.addEventListener('click', function() {
-                                    showControlBar(this);
-                                });
-
-                                rowContainer.appendChild(colorBox);
-                            }
-                        }
-                        paletteContainer.appendChild(rowContainer);
+                    const arrayBuffer = e.target.result;
+                    
+                    if (isValidSegaGenesisPalette(arrayBuffer)) {
+                        paletteData = new Uint8Array(arrayBuffer);
+                        history = [new Uint8Array(paletteData)];
+                        historyIndex = 0;
+                        displayPalette();
+                        updateUIState(true);
+                        updateHistoryButtons();
+                        updateColorManagementState();
+                    } else {
+                        alert("The uploaded file is not a valid Sega Genesis palette file.");
+                        updateUIState(false);
                     }
                 };
 
                 reader.readAsArrayBuffer(file);
+            } else {
+                updateUIState(false);
             }
         });
 
-        document.getElementById('redSlider').addEventListener('input', function() {
-            if (currentColorBox) {
-                updateColor(currentColorBox);
-            }
-            updateSliderValue('redValue', this.value);
-        });
+        function displayPalette() {
+            const paletteDisplay = document.getElementById('paletteDisplay');
+            paletteDisplay.innerHTML = '';
 
-        document.getElementById('greenSlider').addEventListener('input', function() {
-            if (currentColorBox) {
-                updateColor(currentColorBox);
-            }
-            updateSliderValue('greenValue', this.value);
-        });
+            for (let i = 0; i < paletteData.length; i += 32) {
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'palette-row';
 
-        document.getElementById('blueSlider').addEventListener('input', function() {
-            if (currentColorBox) {
-                updateColor(currentColorBox);
-            }
-            updateSliderValue('blueValue', this.value);
-        });
+                for (let j = 0; j < 16 && i + j * 2 < paletteData.length; j++) {
+                    const index = i + j * 2;
+                    const color = (paletteData[index] << 8) | paletteData[index + 1];
+                    const r = ((color & 0x000E) >> 1) * 36.4;
+                    const g = ((color & 0x00E0) >> 5) * 36.4;
+                    const b = ((color & 0x0E00) >> 9) * 36.4;
 
-        function updateSliderValue(sliderId, value) {
-            document.getElementById(sliderId).textContent = value;
-        }
+                    const colorBox = document.createElement('div');
+                    colorBox.className = 'color-box' + (index / 2 === selectedColorIndex ? ' selected' : '');
+                    colorBox.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
+                    colorBox.dataset.index = index / 2;
+                    colorBox.addEventListener('click', selectColor);
 
-        function showControlBar(colorBox) {
-            const controlBar = document.getElementById('controlBar');
-            currentColorBox = colorBox;
-            const colorStyle = getComputedStyle(colorBox);
-            const color = colorStyle.backgroundColor.match(/\d+/g);
-            const red = parseInt(color[0]) / 16;
-            const green = parseInt(color[1]) / 16;
-            const blue = parseInt(color[2]) / 16;
-
-            document.getElementById('redSlider').value = red;
-            document.getElementById('greenSlider').value = green;
-            document.getElementById('blueSlider').value = blue;
-            controlBar.style.display = 'block';
-            updateSliderValue('redValue', red);
-            updateSliderValue('greenValue', green);
-            updateSliderValue('blueValue', blue);
-        }
-
-        function updateColor(colorBox) {
-            const red = document.getElementById('redSlider').value;
-            const green = document.getElementById('greenSlider').value;
-            const blue = document.getElementById('blueSlider').value;
-            colorBox.style.backgroundColor = `rgb(${red * 16}, ${green * 16}, ${blue * 16})`;
-            updatePalette();
-        }
-
-        function updatePalette() {
-            const colorBoxes = document.querySelectorAll('.color-box');
-
-            colorBoxes.forEach((colorBox, index) => {
-                const colorStyle = getComputedStyle(colorBox);
-                const color = colorStyle.backgroundColor.match(/\d+/g);
-                const red = parseInt(color[0]) / 16;
-                const green = parseInt(color[1]) / 16;
-                const blue = parseInt(color[2]) / 16;
-
-                const wordValue = (blue << 8) | (green << 4) | red;
-                paletteData[index * 2] = (wordValue >> 8) & 0xFF;
-                paletteData[index * 2 + 1] = wordValue & 0xFF;
-            });
-        }
-        
-        document.getElementById('savePaletteButton').addEventListener('click', function() {
-            const blob = new Blob([paletteData], { type: 'application/octet-stream' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = 'edited_palette.pal';
-            a.click();
-        });
-
-        document.getElementById('exportPaletteButton').addEventListener('click', function() {
-            const canvas = document.createElement('canvas');
-            const numColors = paletteData.length / 2;
-            const numRows = Math.ceil(numColors / 16);
-            canvas.width = 512;
-            canvas.height = numRows * 32;
-
-            const ctx = canvas.getContext('2d');
-            const colorBoxes = document.querySelectorAll('.color-box');
-            let x = 0;
-            let y = 0;
-
-            colorBoxes.forEach((colorBox, index) => {
-                if (index > 0 && index % 16 === 0) {
-                    x = 0;
-                    y += 32;
+                    rowDiv.appendChild(colorBox);
                 }
 
-                const colorStyle = getComputedStyle(colorBox);
-                const color = colorStyle.backgroundColor.match(/\d+/g);
-                const red = parseInt(color[0]);
-                const green = parseInt(color[1]);
-                const blue = parseInt(color[2]);
+                paletteDisplay.appendChild(rowDiv);
+            }
+        }
 
-                ctx.fillStyle = `rgb(${red}, ${green}, ${blue}`;
-                ctx.fillRect(x, y, 32, 32);
-                x += 32;
+        function selectColor(event) {
+            selectedColorIndex = parseInt(event.target.dataset.index);
+            updateColorEditor();
+            displayPalette();
+            updateColorManagementState();
+        }
+
+        function updateColorManagementState() {
+            const fileLoaded = paletteData.length > 0;
+            const isLastColor = selectedColorIndex === (paletteData.length / 2) - 1;
+            document.getElementById('colorCountInput').disabled = !fileLoaded || !isLastColor;
+            document.getElementById('addColorButton').disabled = !fileLoaded || !isLastColor;
+            document.getElementById('removeColorButton').disabled = !fileLoaded || !isLastColor;
+        }
+
+        function updateColorEditor() {
+            if (selectedColorIndex === -1 || selectedColorIndex >= paletteData.length / 2) return;
+
+            const color = (paletteData[selectedColorIndex * 2] << 8) | paletteData[selectedColorIndex * 2 + 1];
+            const r = ((color & 0x000E) >> 1);
+            const g = ((color & 0x00E0) >> 5);
+            const b = ((color & 0x0E00) >> 9);
+
+            document.getElementById('redSlider').value = r;
+            document.getElementById('greenSlider').value = g;
+            document.getElementById('blueSlider').value = b;
+            updateSliderValues(false);
+        }
+
+        function updateSliderValues(save = true) {
+            ['red', 'green', 'blue'].forEach(color => {
+                document.getElementById(`${color}Value`).textContent = parseInt(document.getElementById(`${color}Slider`).value) + 1;
             });
+            updateColor(save);
+        }
 
-            const imgData = canvas.toDataURL('image/png');
-            const a = document.createElement('a');
-            a.href = imgData;
-            a.download = 'palette.png';
-            a.click();
+        function updateColor(save = true) {
+            if (selectedColorIndex === -1) return;
+
+            const r = parseInt(document.getElementById('redSlider').value);
+            const g = parseInt(document.getElementById('greenSlider').value);
+            const b = parseInt(document.getElementById('blueSlider').value);
+
+            const color = (b << 9) | (g << 5) | (r << 1);
+            paletteData[selectedColorIndex * 2] = (color >> 8) & 0xFF;
+            paletteData[selectedColorIndex * 2 + 1] = color & 0xFF;
+
+            if (save) {
+                if (isEditing) clearTimeout(editTimeout);
+                isEditing = true;
+                editTimeout = setTimeout(() => {
+                    saveState();
+                    isEditing = false;
+                }, 500);
+            }
+
+            displayPalette();
+        }
+
+        ['red', 'green', 'blue'].forEach(color => {
+            document.getElementById(`${color}Slider`).addEventListener('input', () => updateSliderValues(true));
+        });
+
+        document.getElementById('addColorButton').addEventListener('click', function() {
+            const count = parseInt(document.getElementById('colorCountInput').value);
+            if (isNaN(count) || count < 1) return;
+
+            const newColors = new Uint8Array(count * 2);
+            paletteData = new Uint8Array([...paletteData, ...newColors]);
+            selectedColorIndex = paletteData.length / 2 - 1;
+            saveState();
+            displayPalette();
+            updateColorEditor();
+            updateColorManagementState();
+        });
+
+        document.getElementById('removeColorButton').addEventListener('click', function() {
+            const count = parseInt(document.getElementById('colorCountInput').value);
+            if (isNaN(count) || count < 1) return;
+
+            if (paletteData.length > count * 2) {
+                paletteData = paletteData.slice(0, paletteData.length - count * 2);
+                selectedColorIndex = paletteData.length / 2 - 1;
+                saveState();
+                displayPalette();
+                updateColorEditor();
+                updateColorManagementState();
+            } else {
+                alert("Cannot remove more colors than exist in the palette.");
+            }
+        });
+
+        document.getElementById('undoButton').addEventListener('click', function() {
+            if (historyIndex > 0) {
+                historyIndex--;
+                paletteData = new Uint8Array(history[historyIndex]);
+                if (selectedColorIndex >= paletteData.length / 2) {
+                    selectedColorIndex = paletteData.length / 2 - 1;
+                }
+                displayPalette();
+                updateHistoryButtons();
+                updateColorEditor();
+                updateColorManagementState();
+            }
+        });
+
+        document.getElementById('redoButton').addEventListener('click', function() {
+            if (historyIndex < history.length - 1) {
+                historyIndex++;
+                paletteData = new Uint8Array(history[historyIndex]);
+                if (selectedColorIndex >= paletteData.length / 2) {
+                    selectedColorIndex = paletteData.length / 2 - 1;
+                }
+                displayPalette();
+                updateHistoryButtons();
+                updateColorEditor();
+                updateColorManagementState();
+            }
+        });
+
+        document.getElementById('renderButton').addEventListener('click', function() {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            const colorsPerRow = 16;
+            const rows = Math.ceil(paletteData.length / 32);
+            canvas.width = colorsPerRow * 8;
+            canvas.height = rows * 8;
+
+            for (let i = 0; i < paletteData.length / 2; i++) {
+                const row = Math.floor(i / colorsPerRow);
+                const col = i % colorsPerRow;
+                const color = (paletteData[i * 2] << 8) | paletteData[i * 2 + 1];
+                const r = ((color & 0x000E) >> 1) * 36.4;
+                const g = ((color & 0x00E0) >> 5) * 36.4;
+                const b = ((color & 0x0E00) >> 9) * 36.4;
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                ctx.fillRect(col * 8, row * 8, 8, 8);
+            }
+
+            const link = document.createElement('a');
+            link.download = inputFileName.replace(/\.[^/.]+$/, "") + ".png";
+            link.href = canvas.toDataURL();
+            link.click();
+        });
+
+        document.getElementById('saveButton').addEventListener('click', function() {
+            const blob = new Blob([paletteData], {type: 'application/octet-stream'});
+            const link = document.createElement('a');
+            link.download = inputFileName.replace(/\.[^/.]+$/, "") + ".bin";
+            link.href = URL.createObjectURL(blob);
+            link.click();
         });
     </script>
 </body>
