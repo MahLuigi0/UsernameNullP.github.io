@@ -5,77 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sega Genesis Palette Viewer and Editor</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            background-color: #f0f0f0;
-        }
-        .container {
-            display: flex;
-            gap: 20px;
-            margin-top: 20px;
-        }
-        .palette-section, .controls-section {
-            background-color: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
-        .palette-section {
-            width: 480px;
-            height: 400px;
-        }
-        #paletteDisplay {
-            height: 100%;
-            overflow-y: auto;
-        }
-        .palette-row {
-            display: flex;
-        }
-        .color-box {
-            width: 30px;
-            height: 30px;
-            display: inline-block;
-            cursor: pointer;
-        }
-        button, .file-upload-btn {
-            margin-top: 10px;
-            margin-right: 5px;
-            padding: 5px 10px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-        }
-        button:disabled {
-            background-color: #cccccc;
-            cursor: not-allowed;
-        }
-        .file-upload-btn {
-            background-color: #2196F3;
-            display: inline-block;
-        }
-        #fileInput {
-            display: none;
-        }
-        #colorEditor {
-            margin-top: 20px;
-        }
-        #colorCountInput {
-            width: 50px;
-            margin-right: 5px;
-        }
-        #colorCountInput:disabled {
-            background-color: #f0f0f0;
-            cursor: not-allowed;
-        }
-        input[type="range"] {
-            width: 100%;
-        }
+        body{font-family:Arial,sans-serif;display:flex;flex-direction:column;align-items:center;background-color:#f0f0f0}
+        .container{display:flex;gap:20px;margin-top:20px}
+        .palette-section,.controls-section{background-color:white;padding:20px;border-radius:10px;box-shadow:0 0 10px rgba(0,0,0,0.1)}
+        .palette-section{width:480px;height:400px}
+        #paletteDisplay{height:100%;overflow-y:auto}
+        .palette-row{display:flex}
+        .color-box{width:30px;height:30px;display:inline-block;cursor:pointer;box-sizing:border-box}
+        .color-box.selected{outline:3px solid gray;outline-offset:-3px}
+        button,.file-upload-btn{margin-top:10px;margin-right:5px;padding:5px 10px;background-color:#4CAF50;color:white;border:none;border-radius:5px;cursor:pointer;font-size:14px}
+        button:disabled,.slider:disabled{background-color:#cccccc;cursor:not-allowed}
+        .file-upload-btn{background-color:#2196F3;display:inline-block}
+        #fileInput{display:none}
+        #colorEditor{margin-top:20px}
+        #colorCountInput{width:50px;margin-right:5px}
+        #colorCountInput:disabled{background-color:#f0f0f0;cursor:not-allowed}
+        .slider{width:100%;opacity:1;transition:opacity 0.2s}
+        .slider:disabled{opacity:0.5}
     </style>
 </head>
 <body>
@@ -87,14 +33,15 @@
         <div class="controls-section">
             <div id="colorEditor">
                 <h3>Edit Color</h3>
-                <div>R: <input type="range" id="redSlider" min="0" max="7" value="0"> <span id="redValue">1</span></div>
-                <div>G: <input type="range" id="greenSlider" min="0" max="7" value="0"> <span id="greenValue">1</span></div>
-                <div>B: <input type="range" id="blueSlider" min="0" max="7" value="0"> <span id="blueValue">1</span></div>
+                <div>R: <input type="range" class="slider" id="redSlider" min="0" max="7" value="0"> <span id="redValue">1</span></div>
+                <div>G: <input type="range" class="slider" id="greenSlider" min="0" max="7" value="0"> <span id="greenValue">1</span></div>
+                <div>B: <input type="range" class="slider" id="blueSlider" min="0" max="7" value="0"> <span id="blueValue">1</span></div>
             </div>
             <div id="colorManagement">
                 <input type="number" id="colorCountInput" value="1" min="1">
                 <button id="addColorButton">Add Colors</button>
                 <button id="removeColorButton">Remove Colors</button>
+                <button id="grayscaleButton">Grayscale</button>
             </div>
             <div id="historyManagement">
                 <button id="undoButton">Undo</button>
@@ -106,235 +53,206 @@
             <input type="file" id="fileInput" accept=".pal,.bin">
         </div>
     </div>
-
     <script>
-        let inputFileName = '';
-        let paletteData = new Uint8Array(96);
-        let selectedColorIndex = -1;
-        let history = [];
-        let historyIndex = -1;
-        let isEditing = false;
-        let editTimeout = null;
-
-        const controls = ['addColorButton', 'removeColorButton', 'undoButton', 'redoButton', 
-                          'renderButton', 'saveButton', 'redSlider', 'greenSlider', 'blueSlider', 'colorCountInput'];
-
-        function updateUIState(fileLoaded) {
-            controls.forEach(id => document.getElementById(id).disabled = !fileLoaded);
+        let inputFileName='',paletteData=new Uint8Array(96),selectedColorIndex=-1,history=[],historyIndex=-1,isEditing=false,editTimeout=null;
+        const controls=['addColorButton','removeColorButton','undoButton','redoButton','renderButton','saveButton','colorCountInput','grayscaleButton'];
+        const sliders=['redSlider','greenSlider','blueSlider'];
+        function updateUIState(f){
+            controls.forEach(i=>document.getElementById(i).disabled=!f);
+            updateSliderState();
         }
-
+        function updateSliderState(){
+            const enabled=paletteData.length>0&&selectedColorIndex!==-1;
+            sliders.forEach(i=>{
+                const slider=document.getElementById(i);
+                slider.disabled=!enabled;
+                slider.style.opacity=enabled?1:0.5;
+            });
+        }
         updateUIState(false);
-
-        function saveState() {
-            if (history.length === 0 || !arraysEqual(paletteData, history[historyIndex])) {
-                history = history.slice(0, historyIndex + 1);
-                history.push(new Uint8Array(paletteData));
-                historyIndex++;
-                updateHistoryButtons();
-            }
-        }
-
-        function arraysEqual(a, b) {
-            return a.length === b.length && a.every((val, index) => val === b[index]);
-        }
-
-        function updateHistoryButtons() {
-            document.getElementById('undoButton').disabled = historyIndex <= 0;
-            document.getElementById('redoButton').disabled = historyIndex >= history.length - 1;
-        }
-
-        document.getElementById('fileInput').addEventListener('change', function(event) {
-            const file = event.target.files[0];
-            if (file) {
-                if (file.size > 6 * 1024) {
-                    alert("File size exceeds 6KB limit. Please choose a smaller file.");
-                    this.value = '';
-                    return;
-                }
-                inputFileName = file.name;
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    paletteData = new Uint8Array(e.target.result);
-                    history = [new Uint8Array(paletteData)];
-                    historyIndex = 0;
+        function saveState(){if(history.length===0||!arraysEqual(paletteData,history[historyIndex])){history=history.slice(0,historyIndex+1);history.push(new Uint8Array(paletteData));historyIndex++;updateHistoryButtons()}}
+        function arraysEqual(a,b){return a.length===b.length&&a.every((v,i)=>v===b[i])}
+        function updateHistoryButtons(){document.getElementById('undoButton').disabled=historyIndex<=0;document.getElementById('redoButton').disabled=historyIndex>=history.length-1}
+        document.getElementById('fileInput').addEventListener('change',function(e){
+            const f=e.target.files[0];
+            if(f){
+                if(f.size>6*1024){alert("File size exceeds 6KB limit. Please choose a smaller file.");this.value='';return}
+                inputFileName=f.name;
+                const r=new FileReader();
+                r.onload=function(e){
+                    paletteData=new Uint8Array(e.target.result);
+                    history=[new Uint8Array(paletteData)];
+                    historyIndex=0;
+                    selectedColorIndex=-1;
                     displayPalette();
                     updateUIState(true);
                     updateHistoryButtons();
                     updateColorManagementState();
                 };
-                reader.readAsArrayBuffer(file);
-            } else {
-                updateUIState(false);
-            }
+                r.readAsArrayBuffer(f);
+            }else{updateUIState(false)}
         });
-
-        function displayPalette() {
-            const paletteDisplay = document.getElementById('paletteDisplay');
-            paletteDisplay.innerHTML = '';
-            for (let i = 0; i < paletteData.length; i += 32) {
-                const rowDiv = document.createElement('div');
-                rowDiv.className = 'palette-row';
-                for (let j = 0; j < 16 && i + j * 2 < paletteData.length; j++) {
-                    const index = i + j * 2;
-                    const color = (paletteData[index] << 8) | paletteData[index + 1];
-                    const r = ((color & 0x000E) >> 1);
-                    const g = ((color & 0x00E0) >> 5);
-                    const b = ((color & 0x0E00) >> 9);
-                    const colorBox = document.createElement('div');
-                    colorBox.className = 'color-box';
-                    colorBox.style.backgroundColor = `rgb(${r * 36.4}, ${g * 36.4}, ${b * 36.4})`;
-                    colorBox.dataset.index = index / 2;
-                    colorBox.addEventListener('click', selectColor);
-                    if (index / 2 === selectedColorIndex) {
-                        colorBox.classList.add('selected');
-                    }
-                    rowDiv.appendChild(colorBox);
+        function displayPalette(){
+            const p=document.getElementById('paletteDisplay');
+            p.innerHTML='';
+            for(let i=0;i<paletteData.length;i+=32){
+                const r=document.createElement('div');
+                r.className='palette-row';
+                for(let j=0;j<16&&i+j*2<paletteData.length;j++){
+                    const idx=i+j*2;
+                    const c=(paletteData[idx]<<8)|paletteData[idx+1];
+                    const red=((c&0x000E)>>1),green=((c&0x00E0)>>5),blue=((c&0x0E00)>>9);
+                    const b=document.createElement('div');
+                    b.className='color-box';
+                    b.style.backgroundColor=`rgb(${red*36.4},${green*36.4},${blue*36.4})`;
+                    b.dataset.index=idx/2;
+                    b.addEventListener('click',selectColor);
+                    if(idx/2===selectedColorIndex)b.classList.add('selected');
+                    r.appendChild(b);
                 }
-                paletteDisplay.appendChild(rowDiv);
+                p.appendChild(r);
             }
         }
-
-        function selectColor(event) {
-            selectedColorIndex = parseInt(event.target.dataset.index);
+        function selectColor(e){
+            const clickedIndex=parseInt(e.target.dataset.index);
+            if(clickedIndex===selectedColorIndex){
+                selectedColorIndex=-1;
+            }else{
+                selectedColorIndex=clickedIndex;
+            }
             updateColorEditor();
             displayPalette();
             updateColorManagementState();
+            updateSliderState();
         }
-
-        function updateColorManagementState() {
-            const fileLoaded = paletteData.length > 0;
-            const isLastColor = selectedColorIndex === (paletteData.length / 2) - 1;
-            document.getElementById('colorCountInput').disabled = !fileLoaded || !isLastColor;
-            document.getElementById('addColorButton').disabled = !fileLoaded || !isLastColor;
-            document.getElementById('removeColorButton').disabled = !fileLoaded || !isLastColor;
+        function updateColorManagementState(){
+            const f=paletteData.length>0,l=selectedColorIndex===(paletteData.length/2)-1;
+            document.getElementById('colorCountInput').disabled=!f||!l;
+            document.getElementById('addColorButton').disabled=!f||!l;
+            document.getElementById('removeColorButton').disabled=!f||!l;
         }
-
-        function updateColorEditor() {
-            if (selectedColorIndex === -1 || selectedColorIndex >= paletteData.length / 2) return;
-            const color = (paletteData[selectedColorIndex * 2] << 8) | paletteData[selectedColorIndex * 2 + 1];
-            const r = ((color & 0x000E) >> 1);
-            const g = ((color & 0x00E0) >> 5);
-            const b = ((color & 0x0E00) >> 9);
-            document.getElementById('redSlider').value = r;
-            document.getElementById('greenSlider').value = g;
-            document.getElementById('blueSlider').value = b;
+        function updateColorEditor(){
+            if(selectedColorIndex===-1||selectedColorIndex>=paletteData.length/2)return;
+            const c=(paletteData[selectedColorIndex*2]<<8)|paletteData[selectedColorIndex*2+1];
+            const r=((c&0x000E)>>1),g=((c&0x00E0)>>5),b=((c&0x0E00)>>9);
+            document.getElementById('redSlider').value=r;
+            document.getElementById('greenSlider').value=g;
+            document.getElementById('blueSlider').value=b;
             updateSliderValues(false);
         }
-
-        function updateSliderValues(save = true) {
-            document.getElementById('redValue').textContent = parseInt(document.getElementById('redSlider').value) + 1;
-            document.getElementById('greenValue').textContent = parseInt(document.getElementById('greenSlider').value) + 1;
-            document.getElementById('blueValue').textContent = parseInt(document.getElementById('blueSlider').value) + 1;
-            updateColor(save);
+        function updateSliderValues(s=true){
+            sliders.forEach(i=>{
+                const v=parseInt(document.getElementById(i).value);
+                document.getElementById(i.replace('Slider','Value')).textContent=v+1;
+            });
+            updateColor(s);
         }
-
-        function updateColor(save = true) {
-            if (selectedColorIndex === -1) return;
-            const r = parseInt(document.getElementById('redSlider').value);
-            const g = parseInt(document.getElementById('greenSlider').value);
-            const b = parseInt(document.getElementById('blueSlider').value);
-            const color = (b << 9) | (g << 5) | (r << 1);
-            paletteData[selectedColorIndex * 2] = (color >> 8) & 0xFF;
-            paletteData[selectedColorIndex * 2 + 1] = color & 0xFF;
-            if (save) {
-                if (isEditing) clearTimeout(editTimeout);
-                isEditing = true;
-                editTimeout = setTimeout(() => {
-                    saveState();
-                    isEditing = false;
-                }, 500);
+        function updateColor(s=true){
+            if(selectedColorIndex===-1)return;
+            const r=parseInt(document.getElementById('redSlider').value);
+            const g=parseInt(document.getElementById('greenSlider').value);
+            const b=parseInt(document.getElementById('blueSlider').value);
+            const c=(b<<9)|(g<<5)|(r<<1);
+            paletteData[selectedColorIndex*2]=(c>>8)&0xFF;
+            paletteData[selectedColorIndex*2+1]=c&0xFF;
+            if(s){
+                if(isEditing)clearTimeout(editTimeout);
+                isEditing=true;
+                editTimeout=setTimeout(()=>{saveState();isEditing=false},500);
             }
             displayPalette();
         }
-
-        ['redSlider', 'greenSlider', 'blueSlider'].forEach(id => {
-            document.getElementById(id).addEventListener('input', () => updateSliderValues(true));
-        });
-
-        document.getElementById('addColorButton').addEventListener('click', function() {
-            const count = parseInt(document.getElementById('colorCountInput').value);
-            if (isNaN(count) || count < 1) return;
-            const newColors = new Uint8Array(count * 2);
-            paletteData = new Uint8Array([...paletteData, ...newColors]);
-            selectedColorIndex = paletteData.length / 2 - 1;
+        sliders.forEach(i=>document.getElementById(i).addEventListener('input',()=>updateSliderValues(true)));
+        document.getElementById('addColorButton').addEventListener('click',function(){
+            const c=parseInt(document.getElementById('colorCountInput').value);
+            if(isNaN(c)||c<1)return;
+            const n=new Uint8Array(c*2);
+            paletteData=new Uint8Array([...paletteData,...n]);
+            selectedColorIndex=paletteData.length/2-1;
             saveState();
             displayPalette();
             updateColorEditor();
             updateColorManagementState();
+            updateSliderState();
         });
-
-        document.getElementById('removeColorButton').addEventListener('click', function() {
-            const count = parseInt(document.getElementById('colorCountInput').value);
-            if (isNaN(count) || count < 1) return;
-            if (paletteData.length > count * 2) {
-                paletteData = paletteData.slice(0, paletteData.length - count * 2);
-                selectedColorIndex = paletteData.length / 2 - 1;
+        document.getElementById('removeColorButton').addEventListener('click',function(){
+            const c=parseInt(document.getElementById('colorCountInput').value);
+            if(isNaN(c)||c<1)return;
+            if(paletteData.length>c*2){
+                paletteData=paletteData.slice(0,paletteData.length-c*2);
+                selectedColorIndex=paletteData.length/2-1;
                 saveState();
                 displayPalette();
                 updateColorEditor();
                 updateColorManagementState();
-            } else {
-                alert("Cannot remove more colors than exist in the palette.");
-            }
+                updateSliderState();
+            }else{alert("Cannot remove more colors than exist in the palette.")}
         });
-
-        document.getElementById('undoButton').addEventListener('click', function() {
-            if (historyIndex > 0) {
+        document.getElementById('undoButton').addEventListener('click',function(){
+            if(historyIndex>0){
                 historyIndex--;
-                paletteData = new Uint8Array(history[historyIndex]);
-                if (selectedColorIndex >= paletteData.length / 2) {
-                    selectedColorIndex = paletteData.length / 2 - 1;
-                }
+                paletteData=new Uint8Array(history[historyIndex]);
+                if(selectedColorIndex>=paletteData.length/2)selectedColorIndex=paletteData.length/2-1;
                 displayPalette();
                 updateHistoryButtons();
                 updateColorEditor();
                 updateColorManagementState();
+                updateSliderState();
             }
         });
-
-        document.getElementById('redoButton').addEventListener('click', function() {
-            if (historyIndex < history.length - 1) {
+        document.getElementById('redoButton').addEventListener('click',function(){
+            if(historyIndex<history.length-1){
                 historyIndex++;
-                paletteData = new Uint8Array(history[historyIndex]);
-                if (selectedColorIndex >= paletteData.length / 2) {
-                    selectedColorIndex = paletteData.length / 2 - 1;
-                }
+                paletteData=new Uint8Array(history[historyIndex]);
+                if(selectedColorIndex>=paletteData.length/2)selectedColorIndex=paletteData.length/2-1;
                 displayPalette();
                 updateHistoryButtons();
                 updateColorEditor();
                 updateColorManagementState();
+                updateSliderState();
             }
         });
-
-        document.getElementById('renderButton').addEventListener('click', function() {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            const colorsPerRow = 16;
-            const rows = Math.ceil(paletteData.length / 32);
-            canvas.width = colorsPerRow * 8;
-            canvas.height = rows * 8;
-            for (let i = 0; i < paletteData.length / 2; i++) {
-                const row = Math.floor(i / colorsPerRow);
-                const col = i % colorsPerRow;
-                const color = (paletteData[i * 2] << 8) | paletteData[i * 2 + 1];
-                const r = ((color & 0x000E) >> 1) * 36.4;
-                const g = ((color & 0x00E0) >> 5) * 36.4;
-                const b = ((color & 0x0E00) >> 9) * 36.4;
-                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
-                ctx.fillRect(col * 8, row * 8, 8, 8);
+        document.getElementById('renderButton').addEventListener('click',function(){
+            const c=document.createElement('canvas');
+            const x=c.getContext('2d');
+            const r=16;
+            const w=Math.ceil(paletteData.length/32);
+            c.width=r*8;
+            c.height=w*8;
+            for(let i=0;i<paletteData.length/2;i++){
+                const y=Math.floor(i/r);
+                const l=i%r;
+                const o=(paletteData[i*2]<<8)|paletteData[i*2+1];
+                const d=((o&0x000E)>>1)*36.4;
+                const e=((o&0x00E0)>>5)*36.4;
+                const f=((o&0x0E00)>>9)*36.4;
+                x.fillStyle=`rgb(${d},${e},${f})`;
+                x.fillRect(l*8,y*8,8,8);
             }
-            const link = document.createElement('a');
-            link.download = inputFileName.replace(/\.[^/.]+$/, "") + ".png";
-            link.href = canvas.toDataURL();
-            link.click();
+            const k=document.createElement('a');
+            k.download=inputFileName.replace(/\.[^/.]+$/,"")+".png";
+            k.href=c.toDataURL();
+            k.click();
         });
-
-        document.getElementById('saveButton').addEventListener('click', function() {
-            const blob = new Blob([paletteData], {type: 'application/octet-stream'});
-            const link = document.createElement('a');
-            link.download = inputFileName.replace(/\.[^/.]+$/, "") + ".bin";
-            link.href = URL.createObjectURL(blob);
-            link.click();
+        document.getElementById('saveButton').addEventListener('click',function(){
+            const b=new Blob([paletteData],{type:'application/octet-stream'});
+            const l=document.createElement('a');
+            l.download=inputFileName.replace(/\.[^/.]+$/,"")+".bin";
+            l.href=URL.createObjectURL(b);
+            l.click();
+        });
+        document.getElementById('grayscaleButton').addEventListener('click',function(){
+            for(let i=0;i<paletteData.length;i+=2){
+                const c=(paletteData[i]<<8)|paletteData[i+1];
+                const r=((c&0x000E)>>1),g=((c&0x00E0)>>5),b=((c&0x0E00)>>9);
+                const gray=Math.round((r+g+b)/3);
+                const newColor=(gray<<9)|(gray<<5)|(gray<<1);
+                paletteData[i]=(newColor>>8)&0xFF;
+                paletteData[i+1]=newColor&0xFF;
+            }
+            saveState();
+            displayPalette();
+            updateColorEditor();
         });
     </script>
 </body>
