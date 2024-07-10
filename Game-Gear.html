@@ -8,9 +8,10 @@
         body{font-family:Arial,sans-serif;display:flex;flex-direction:column;align-items:center;background-color:#f0f0f0}
         .container{display:flex;gap:20px;margin-top:20px}
         .palette-section,.controls-section{background-color:white;padding:20px;border-radius:10px;box-shadow:0 0 10px rgba(0,0,0,0.1)}
-        .palette-section{width:240px;height:240px}
-        #paletteDisplay{height:100%;display:grid;grid-template-columns:repeat(4,1fr)}
-        .color-box{width:60px;height:60px;cursor:pointer;box-sizing:border-box}
+        .palette-section{width:480px;height:400px;overflow-y:auto}
+        #paletteDisplay{display:flex;flex-direction:column}
+        .palette-row{display:flex}
+        .color-box{width:30px;height:30px;cursor:pointer}
         .color-box.selected{outline:3px solid gray;outline-offset:-3px;z-index:1}
         button,.file-upload-btn{margin-top:10px;margin-right:5px;padding:5px 10px;background-color:#4CAF50;color:white;border:none;border-radius:5px;cursor:pointer;font-size:14px}
         button:disabled,.slider:disabled{background-color:#cccccc;cursor:not-allowed}
@@ -45,7 +46,7 @@
         </div>
     </div>
     <script>
-        let inputFileName='',paletteData=new Uint16Array(16),selectedColorIndex=-1,history=[],historyIndex=-1,isEditing=false,editTimeout=null;
+        let inputFileName='',paletteData=new Uint16Array(32),selectedColorIndex=-1,history=[],historyIndex=-1,isEditing=false,editTimeout=null;
         const controls=['undoButton','redoButton','renderButton','saveButton'];
         const sliders=['redSlider','greenSlider','blueSlider'];
         function updateUIState(f){
@@ -67,11 +68,11 @@
         document.getElementById('fileInput').addEventListener('change',function(e){
             const f=e.target.files[0];
             if(f){
-                if(f.size!==32&&f.size!==16){alert("Invalid file size. Game Gear palette should be 32 bytes, Master System palette should be 16 bytes.");this.value='';return}
+                if(f.size!==64&&f.size!==32&&f.size!==16){alert("Invalid file size. Game Gear palette should be 32 or 64 bytes, Master System palette should be 16 bytes.");this.value='';return}
                 inputFileName=f.name;
                 const r=new FileReader();
                 r.onload=function(e){
-                    if(f.size===32){
+                    if(f.size===64||f.size===32){
                         paletteData=new Uint16Array(e.target.result);
                     }else{
                         const msData=new Uint8Array(e.target.result);
@@ -95,16 +96,22 @@
         function displayPalette(){
             const p=document.getElementById('paletteDisplay');
             p.innerHTML='';
-            for(let i=0;i<paletteData.length;i++){
-                const c=paletteData[i];
-                const r=(c&15)*17,g=((c>>4)&15)*17,b=((c>>8)&15)*17;
-                const box=document.createElement('div');
-                box.className='color-box';
-                box.style.backgroundColor=`rgb(${r},${g},${b})`;
-                box.dataset.index=i;
-                box.addEventListener('click',selectColor);
-                if(i===selectedColorIndex)box.classList.add('selected');
-                p.appendChild(box);
+            for(let row=0;row<paletteData.length/16;row++){
+                const rowDiv=document.createElement('div');
+                rowDiv.className='palette-row';
+                for(let col=0;col<16;col++){
+                    const i=row*16+col;
+                    const c=paletteData[i];
+                    const r=(c&15)*17,g=((c>>4)&15)*17,b=((c>>8)&15)*17;
+                    const box=document.createElement('div');
+                    box.className='color-box';
+                    box.style.backgroundColor=`rgb(${r},${g},${b})`;
+                    box.dataset.index=i;
+                    box.addEventListener('click',selectColor);
+                    if(i===selectedColorIndex)box.classList.add('selected');
+                    rowDiv.appendChild(box);
+                }
+                p.appendChild(rowDiv);
             }
         }
         function selectColor(e){
@@ -168,13 +175,15 @@
         document.getElementById('renderButton').addEventListener('click',function(){
             const c=document.createElement('canvas');
             const x=c.getContext('2d');
-            c.width=160;
-            c.height=160;
+            const colorsPerRow=16;
+            const rows=Math.ceil(paletteData.length/colorsPerRow);
+            c.width=colorsPerRow*30;
+            c.height=rows*30;
             for(let i=0;i<paletteData.length;i++){
                 const color=paletteData[i];
                 const r=(color&15)*17,g=((color>>4)&15)*17,b=((color>>8)&15)*17;
                 x.fillStyle=`rgb(${r},${g},${b})`;
-                x.fillRect((i%4)*40,(Math.floor(i/4))*40,40,40);
+                x.fillRect((i%colorsPerRow)*30,Math.floor(i/colorsPerRow)*30,30,30);
             }
             const k=document.createElement('a');
             k.download=inputFileName.replace(/\.[^/.]+$/,"")+".png";
