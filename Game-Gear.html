@@ -88,7 +88,7 @@
             p.innerHTML='';
             for(let i=0;i<paletteData.length;i++){
                 const c=paletteData[i];
-                const r=((c>>4)&15)*17,g=((c>>8)&15)*17,b=(c&15)*17;
+                const r=(c&15)*17,g=((c>>4)&15)*17,b=((c>>8)&15)*17;
                 const box=document.createElement('div');
                 box.className='color-box';
                 box.style.backgroundColor=`rgb(${r},${g},${b})`;
@@ -108,9 +108,9 @@
         function updateColorEditor(){
             if(selectedColorIndex===-1||selectedColorIndex>=paletteData.length)return;
             const c=paletteData[selectedColorIndex];
-            document.getElementById('redSlider').value=(c>>4)&15;
-            document.getElementById('greenSlider').value=(c>>8)&15;
-            document.getElementById('blueSlider').value=c&15;
+            document.getElementById('redSlider').value=c&15;
+            document.getElementById('greenSlider').value=(c>>4)&15;
+            document.getElementById('blueSlider').value=(c>>8)&15;
             updateSliderValues(false);
         }
         function updateSliderValues(s=true){
@@ -125,7 +125,7 @@
             const r=parseInt(document.getElementById('redSlider').value);
             const g=parseInt(document.getElementById('greenSlider').value);
             const b=parseInt(document.getElementById('blueSlider').value);
-            paletteData[selectedColorIndex]=(g<<8)|(r<<4)|b;
+            paletteData[selectedColorIndex]=(b<<8)|(g<<4)|r;
             if(s){
                 if(isEditing)clearTimeout(editTimeout);
                 isEditing=true;
@@ -163,7 +163,7 @@
             c.height=160;
             for(let i=0;i<paletteData.length;i++){
                 const color=paletteData[i];
-                const r=((color>>4)&15)*17,g=((color>>8)&15)*17,b=(color&15)*17;
+                const r=(color&15)*17,g=((color>>4)&15)*17,b=((color>>8)&15)*17;
                 x.fillStyle=`rgb(${r},${g},${b})`;
                 x.fillRect((i%4)*40,(Math.floor(i/4))*40,40,40);
             }
