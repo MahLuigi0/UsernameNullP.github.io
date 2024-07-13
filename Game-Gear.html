@@ -56,9 +56,9 @@
                 </div>
             </div>
             <div class="button-row">
-                <button id="undoButton">Undo</button>
-                <button id="redoButton">Redo</button>
-                <button id="toggleRowButton">+</button>
+                <button id="rowButton">+ New Palette</button>
+                <button id="undoButton" disabled>Undo</button>
+                <button id="redoButton" disabled>Redo</button>
             </div>
             <div class="button-row">
                 <button id="exportPngButton">Export PNG</button>
@@ -69,13 +69,15 @@
         </div>
     </div>
     <script>
-        let inputFileName='',paletteData=new Uint16Array(16),selectedColorIndex=-1,history=[],historyIndex=-1,isEditing=false,editTimeout=null;
-        const controls=['undoButton','redoButton','exportPngButton','exportPaletteButton','toggleRowButton'];
+        let inputFileName='',paletteData=new Uint16Array(0),selectedColorIndex=-1;
+        let history = [], historyIndex = -1;
+        const controls=['exportPngButton','exportPaletteButton', 'undoButton', 'redoButton'];
         const sliders=['redSlider','greenSlider','blueSlider'];
         function updateUIState(f){
             controls.forEach(i=>document.getElementById(i).disabled=!f);
             updateSliderState();
-            updateToggleRowButton();
+            updateRowButton();
+            updateHistoryButtons();
         }
         function updateSliderState(){
             const enabled=paletteData.length>0&&selectedColorIndex!==-1;
@@ -96,15 +98,32 @@
             document.getElementById('greenPreview').style.backgroundColor='rgb(0,0,0)';
             document.getElementById('bluePreview').style.backgroundColor='rgb(0,0,0)';
         }
-        function updateToggleRowButton(){
-            const button=document.getElementById('toggleRowButton');
-            button.textContent=paletteData.length===16?'+':'-';
+        function updateRowButton(){
+            const button=document.getElementById('rowButton');
+            if(paletteData.length===0){
+                button.textContent='+ New Palette';
+                button.onclick=addNewPalette;
+            }else if(paletteData.length===16){
+                button.textContent='+ Add Row';
+                button.onclick=toggleRow;
+            }else{
+                button.textContent='- Remove Row';
+                button.onclick=toggleRow;
+            }
+        }
+        function updateHistoryButtons(){
+            document.getElementById('undoButton').disabled = historyIndex <= 0;
+            document.getElementById('redoButton').disabled = historyIndex >= history.length - 1;
+        }
+        function saveState(){
+            history = history.slice(0, historyIndex + 1);
+            history.push(new Uint16Array(paletteData));
+            historyIndex++;
+            updateHistoryButtons();
         }
         updateUIState(false);
         resetSliders();
-        function saveState(){if(history.length===0||!arraysEqual(paletteData,history[historyIndex])){history=history.slice(0,historyIndex+1);history.push(new Uint16Array(paletteData));historyIndex++;updateHistoryButtons()}}
-        function arraysEqual(a,b){return a.length===b.length&&a.every((v,i)=>v===b[i])}
-        function updateHistoryButtons(){document.getElementById('undoButton').disabled=historyIndex<=0;document.getElementById('redoButton').disabled=historyIndex>=history.length-1}
+        updateRowButton();
         document.getElementById('fileInput').addEventListener('change',function(e){
             const f=e.target.files[0];
             if(f){
@@ -133,12 +152,10 @@
                                 const b=imageData.data[(y*canvas.width+x)*4+2];
                                 paletteData[i]=rgbToGameGear(r,g,b);
                             }
-                            history=[new Uint16Array(paletteData)];
-                            historyIndex=0;
                             selectedColorIndex=-1;
                             displayPalette();
                             updateUIState(true);
-                            updateHistoryButtons();
+                            saveState();
                         };
                         img.src=e.target.result;
                     };
@@ -157,12 +174,10 @@
                                 paletteData[i]=(b<<8)|(g<<4)|r;
                             }
                         }
-                        history=[new Uint16Array(paletteData)];
-                        historyIndex=0;
                         selectedColorIndex=-1;
                         displayPalette();
                         updateUIState(true);
-                        updateHistoryButtons();
+                        saveState();
                     };
                     r.readAsArrayBuffer(f);
                 }
@@ -195,6 +210,12 @@
                 p.appendChild(rowDiv);
             }
         }
+        function addNewPalette(){
+            paletteData=new Uint16Array(16);
+            displayPalette();
+            updateUIState(true);
+            saveState();
+        }
         function toggleRow(){
             if(paletteData.length===16){
                 const newRow=new Uint16Array(16);
@@ -202,9 +223,9 @@
             }else{
                 paletteData=new Uint16Array(paletteData.slice(0,16));
             }
-            saveState();
             displayPalette();
             updateUIState(true);
+            saveState();
         }
         function selectColor(e){
             const clickedIndex=parseInt(e.target.dataset.index);
@@ -242,37 +263,28 @@
             const g=parseInt(document.getElementById('greenSlider').value);
             const b=parseInt(document.getElementById('blueSlider').value);
             paletteData[selectedColorIndex]=(b<<8)|(g<<4)|r;
-            if(s){
-                if(isEditing)clearTimeout(editTimeout);
-                isEditing=true;
-                editTimeout=setTimeout(()=>{saveState();isEditing=false},500);
-            }
             displayPalette();
+            if(s) saveState();
         }
         sliders.forEach(i=>document.getElementById(i).addEventListener('input',()=>updateSliderValues(true)));
-        document.getElementById('undoButton').addEventListener('click',function(){
-            if(historyIndex>0){
+        document.getElementById('undoButton').addEventListener('click', function() {
+            if (historyIndex > 0) {
                 historyIndex--;
-                paletteData=new Uint16Array(history[historyIndex]);
-                selectedColorIndex=-1;
+                paletteData = new Uint16Array(history[historyIndex]);
+                selectedColorIndex = -1;
                 displayPalette();
-                updateHistoryButtons();
-                updateColorEditor();
                 updateUIState(true);
             }
         });
-        document.getElementById('redoButton').addEventListener('click',function(){
-            if(historyIndex<history.length-1){
+        document.getElementById('redoButton').addEventListener('click', function() {
+            if (historyIndex < history.length - 1) {
                 historyIndex++;
-                paletteData=new Uint16Array(history[historyIndex]);
-                selectedColorIndex=-1;
+                paletteData = new Uint16Array(history[historyIndex]);
+                selectedColorIndex = -1;
                 displayPalette();
-                updateHistoryButtons();
-                updateColorEditor();
                 updateUIState(true);
             }
         });
-        document.getElementById('toggleRowButton').addEventListener('click',toggleRow);
         document.getElementById('exportPngButton').addEventListener('click',function(){
             const c=document.createElement('canvas');
             const x=c.getContext('2d');
