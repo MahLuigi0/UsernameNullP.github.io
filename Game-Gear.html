@@ -63,8 +63,8 @@
             <div class="button-row">
                 <button id="exportPngButton">Export PNG</button>
                 <button id="exportPaletteButton">Export Palette</button>
-                <label for="fileInput" class="file-upload-btn">Upload Palette</label>
-                <input type="file" id="fileInput" accept=".pal,.bin">
+                <label for="fileInput" class="file-upload-btn">Upload Palette/PNG</label>
+                <input type="file" id="fileInput" accept=".pal,.bin,.png">
             </div>
         </div>
     </div>
@@ -108,31 +108,72 @@
         document.getElementById('fileInput').addEventListener('change',function(e){
             const f=e.target.files[0];
             if(f){
-                if(f.size!==64&&f.size!==32&&f.size!==16){alert("Invalid file size. Game Gear palette should be 32 or 64 bytes, Master System palette should be 16 bytes.");this.value='';return}
                 inputFileName=f.name;
                 const r=new FileReader();
-                r.onload=function(e){
-                    if(f.size===64||f.size===32){
-                        paletteData=new Uint16Array(e.target.result);
-                    }else{
-                        const msData=new Uint8Array(e.target.result);
-                        paletteData=new Uint16Array(16);
-                        for(let i=0;i<16;i++){
-                            const c=msData[i];
-                            const r=(c&3)*5,g=((c>>2)&3)*5,b=((c>>4)&3)*5;
-                            paletteData[i]=(b<<8)|(g<<4)|r;
+                if(f.type==="image/png"){
+                    r.onload=function(e){
+                        const img=new Image();
+                        img.onload=function(){
+                            if(img.width!==128||(img.height!==8&&img.height!==16)){
+                                alert("Invalid PNG size. Image should be 128x8 or 128x16.");
+                                return;
+                            }
+                            const canvas=document.createElement('canvas');
+                            canvas.width=img.width;
+                            canvas.height=img.height;
+                            const ctx=canvas.getContext('2d');
+                            ctx.drawImage(img,0,0);
+                            const imageData=ctx.getImageData(0,0,canvas.width,canvas.height);
+                            paletteData=new Uint16Array(img.height===8?16:32);
+                            for(let i=0;i<paletteData.length;i++){
+                                const x=(i%16)*8;
+                                const y=Math.floor(i/16)*8;
+                                const r=imageData.data[(y*canvas.width+x)*4];
+                                const g=imageData.data[(y*canvas.width+x)*4+1];
+                                const b=imageData.data[(y*canvas.width+x)*4+2];
+                                paletteData[i]=rgbToGameGear(r,g,b);
+                            }
+                            history=[new Uint16Array(paletteData)];
+                            historyIndex=0;
+                            selectedColorIndex=-1;
+                            displayPalette();
+                            updateUIState(true);
+                            updateHistoryButtons();
+                        };
+                        img.src=e.target.result;
+                    };
+                    r.readAsDataURL(f);
+                }else{
+                    if(f.size!==64&&f.size!==32&&f.size!==16){alert("Invalid file size. Game Gear palette should be 32 or 64 bytes, Master System palette should be 16 bytes.");this.value='';return}
+                    r.onload=function(e){
+                        if(f.size===64||f.size===32){
+                            paletteData=new Uint16Array(e.target.result);
+                        }else{
+                            const msData=new Uint8Array(e.target.result);
+                            paletteData=new Uint16Array(16);
+                            for(let i=0;i<16;i++){
+                                const c=msData[i];
+                                const r=(c&3)*5,g=((c>>2)&3)*5,b=((c>>4)&3)*5;
+                                paletteData[i]=(b<<8)|(g<<4)|r;
+                            }
                         }
-                    }
-                    history=[new Uint16Array(paletteData)];
-                    historyIndex=0;
-                    selectedColorIndex=-1;
-                    displayPalette();
-                    updateUIState(true);
-                    updateHistoryButtons();
-                };
-                r.readAsArrayBuffer(f);
+                        history=[new Uint16Array(paletteData)];
+                        historyIndex=0;
+                        selectedColorIndex=-1;
+                        displayPalette();
+                        updateUIState(true);
+                        updateHistoryButtons();
+                    };
+                    r.readAsArrayBuffer(f);
+                }
             }else{updateUIState(false)}
         });
+        function rgbToGameGear(r,g,b){
+            r=Math.round(r/17);
+            g=Math.round(g/17);
+            b=Math.round(b/17);
+            return (b<<8)|(g<<4)|r;
+        }
         function displayPalette(){
             const p=document.getElementById('paletteDisplay');
             p.innerHTML='';
