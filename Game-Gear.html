@@ -6,21 +6,23 @@
     <title>Ultimate Game Gear Palette Editor</title>
     <style>
         body{font-family:Arial,sans-serif;display:flex;flex-direction:column;align-items:center;background-color:#2c2c2c;color:#f0f0f0}
-        .container{display:flex;gap:20px;margin-top:20px}
-        .palette-section,.controls-section{background-color:#3c3c3c;padding:20px;border-radius:10px;box-shadow:0 0 10px rgba(0,0,0,0.1)}
-        .palette-section{width:480px;height:400px;overflow-y:auto}
-        #paletteDisplay{display:flex;flex-direction:column}
+        .container{display:flex;margin-top:20px}
+        .palette-section,.controls-section,.rom-section{background-color:#3c3c3c;padding:20px;box-shadow:0 0 10px rgba(0,0,0,0.1)}
+        .palette-section{width:380px;height:400px;overflow-y:auto;border-left:1px solid black;border-right:1px solid black}
+        .rom-section{width:400px;height:400px;overflow-y:auto;position:relative;border-right:1px solid black}
+        #paletteDisplay,#romPaletteDisplay{display:flex;flex-direction:column}
         .palette-row{display:flex;align-items:center}
-        .color-box{width:30px;height:30px;cursor:pointer}
+        .color-box{width:22px;height:22px;cursor:pointer}
+        .rom-color-box{width:15px;height:15px;cursor:pointer}
         .color-box.selected{outline:3px solid gray;outline-offset:-3px;z-index:1}
-        button,.file-upload-btn{margin-top:10px;margin-right:5px;padding:5px 10px;background-color:#4CAF50;color:white;border:none;border-radius:5px;cursor:pointer;font-size:14px}
+        button,.file-upload-btn{margin-top:10px;margin-right:5px;padding:5px 10px;background-color:#4CAF50;color:white;border:none;cursor:pointer;font-size:14px}
         button:disabled,.slider:disabled{background-color:#555555;cursor:not-allowed}
         .file-upload-btn{background-color:#2196F3;display:inline-block}
-        #fileInput{display:none}
+        #fileInput,#romInput{display:none}
         #colorEditor{margin-top:20px}
-        .slider{-webkit-appearance:none;width:calc(100% - 50px);height:10px;border-radius:5px;outline:none;opacity:1;transition:opacity 0.2s}
-        .slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;background:#808080;cursor:pointer}
-        .slider::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:#808080;cursor:pointer}
+        .slider{-webkit-appearance:none;width:calc(100% - 50px);height:10px;outline:none;opacity:1;transition:opacity 0.2s}
+        .slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;background:#808080;cursor:pointer}
+        .slider::-moz-range-thumb{width:20px;height:20px;background:#808080;cursor:pointer}
         .slider:disabled{opacity:0.5}
         #redSlider{background:linear-gradient(to right, #000000, #FF0000)}
         #greenSlider{background:linear-gradient(to right, #000000, #00FF00)}
@@ -28,11 +30,27 @@
         .button-row{display:flex;justify-content:flex-start;margin-top:10px}
         .color-preview{width:30px;height:30px;display:inline-block;margin-left:10px;vertical-align:middle}
         .slider-container{display:flex;align-items:center;margin-bottom:10px}
+        #romScrollBar{position:absolute;right:0;top:0;width:20px;height:calc(100% - 40px);background:#555;cursor:pointer}
+        #romScrollThumb{position:absolute;width:20px;height:50px;background:#888;top:0;right:0}
+        .rom-palette-row{display:flex;align-items:center}
+        .rom-address{width:60px;font-size:12px;text-align:right;padding-right:5px}
+        .rom-palette-colors{display:flex;flex-wrap:wrap;width:240px}
+        #hexInputContainer{position:absolute;bottom:0;left:0;right:20px;height:40px;display:flex;align-items:center;padding:0 10px;background-color:#2c2c2c}
+        #hexInput{width:100px;margin-right:10px;padding:5px;background-color:#4c4c4c;color:#f0f0f0;border:none}
+        #goButton{padding:5px 10px;background-color:#4CAF50;color:white;border:none;cursor:pointer}
     </style>
 </head>
 <body>
     <h1>Ultimate Game Gear Palette Editor</h1>
     <div class="container">
+        <div class="rom-section">
+            <div id="romPaletteDisplay"></div>
+            <div id="romScrollBar"><div id="romScrollThumb"></div></div>
+            <div id="hexInputContainer">
+                <input type="text" id="hexInput" placeholder="Hex Address">
+                <button id="goButton">Go</button>
+            </div>
+        </div>
         <div class="palette-section">
             <div id="paletteDisplay"></div>
         </div>
@@ -66,11 +84,17 @@
                 <label for="fileInput" class="file-upload-btn">Upload Palette/PNG</label>
                 <input type="file" id="fileInput" accept=".pal,.bin,.png">
             </div>
+            <div class="button-row">
+                <label for="romInput" class="file-upload-btn">Upload ROM</label>
+                <input type="file" id="romInput" accept=".gg,.bin">
+            </div>
         </div>
     </div>
     <script>
         let inputFileName='',paletteData=new Uint16Array(0),selectedColorIndex=-1;
         let history = [], historyIndex = -1;
+        let romData = null;
+        let romScrollPosition = 0;
         const controls=['exportPngButton','exportPaletteButton', 'undoButton', 'redoButton'];
         const sliders=['redSlider','greenSlider','blueSlider'];
         function updateUIState(f){
@@ -183,6 +207,19 @@
                 }
             }else{updateUIState(false)}
         });
+        document.getElementById('romInput').addEventListener('change', function(e) {
+            const f = e.target.files[0];
+            if (f) {
+                const r = new FileReader();
+                r.onload = function(e) {
+                    romData = new Uint8Array(e.target.result);
+                    romScrollPosition = 0;
+                    displayRomPalette();
+                    setupRomScroll();
+                };
+                r.readAsArrayBuffer(f);
+            }
+        });
         function rgbToGameGear(r,g,b){
             r=Math.round(r/17);
             g=Math.round(g/17);
@@ -210,12 +247,122 @@
                 p.appendChild(rowDiv);
             }
         }
+        function displayRomPalette() {
+            const p = document.getElementById('romPaletteDisplay');
+            p.innerHTML = '';
+            for (let row = 0; row < 24; row++) {
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'rom-palette-row';
+                
+                // Add address for every 10th row (including the first row)
+                if (row % 10 === 0) {
+                    const addressDiv = document.createElement('div');
+                    addressDiv.className = 'rom-address';
+                    const address = (romScrollPosition + row) * 32;
+                    addressDiv.textContent = '0x' + address.toString(16).padStart(6, '0');
+                    rowDiv.appendChild(addressDiv);
+                } else {
+                    // Add empty div for alignment
+                    const spacerDiv = document.createElement('div');
+                    spacerDiv.className = 'rom-address';
+                    rowDiv.appendChild(spacerDiv);
+                }
+
+                const paletteDiv = document.createElement('div');
+                paletteDiv.className = 'rom-palette-colors';
+                for (let col = 0; col < 16; col++) {
+                    const i = (romScrollPosition + row) * 16 + col;
+                    if (i * 2 + 1 < romData.length) {
+                        const c = (romData[i * 2 + 1] << 8) | romData[i * 2];
+                        const r = (c & 15) * 17, g = ((c >> 4) & 15) * 17, b = ((c >> 8) & 15) * 17;
+                        const box = document.createElement('div');
+                        box.className = 'rom-color-box';
+                        box.style.backgroundColor = `rgb(${r},${g},${b})`;
+                        box.dataset.index = i;
+                        box.addEventListener('click', selectRomColor);
+                        paletteDiv.appendChild(box);
+                    }
+                }
+                rowDiv.appendChild(paletteDiv);
+                p.appendChild(rowDiv);
+            }
+        }
+        function setupRomScroll() {
+            const scrollBar = document.getElementById('romScrollBar');
+            const scrollThumb = document.getElementById('romScrollThumb');
+            const totalPalettes = Math.floor(romData.length / 32);
+            const visiblePalettes = 24;
+            const thumbHeight = (visiblePalettes / totalPalettes) * scrollBar.clientHeight;
+            scrollThumb.style.height = `${thumbHeight}px`;
+
+            let isDragging = false;
+            let startY, startTop;
+
+            scrollThumb.addEventListener('mousedown', function(e) {
+                isDragging = true;
+                startY = e.clientY;
+                startTop = scrollThumb.offsetTop;
+                e.preventDefault();
+            });
+
+            document.addEventListener('mousemove', function(e) {
+                if (!isDragging) return;
+                const delta = e.clientY - startY;
+                let newTop = startTop + delta;
+                const maxTop = scrollBar.clientHeight - scrollThumb.clientHeight;
+                newTop = Math.max(0, Math.min(newTop, maxTop));
+                scrollThumb.style.top = `${newTop}px`;
+                
+                const scrollPercentage = newTop / maxTop;
+                romScrollPosition = Math.floor(scrollPercentage * (totalPalettes - visiblePalettes));
+                displayRomPalette();
+            });
+
+            document.addEventListener('mouseup', function() {
+                isDragging = false;
+            });
+
+            scrollBar.addEventListener('click', function(e) {
+                if (e.target === scrollThumb) return;
+                const clickY = e.clientY - scrollBar.getBoundingClientRect().top;
+                const scrollPercentage = clickY / scrollBar.clientHeight;
+                romScrollPosition = Math.floor(scrollPercentage * (totalPalettes - visiblePalettes));
+                displayRomPalette();
+                updateScrollThumbPosition();
+            });
+        }
+
+        function updateScrollThumbPosition() {
+            const scrollBar = document.getElementById('romScrollBar');
+            const scrollThumb = document.getElementById('romScrollThumb');
+            const totalPalettes = Math.floor(romData.length / 32);
+            const visiblePalettes = 24;
+            const scrollPercentage = romScrollPosition / (totalPalettes - visiblePalettes);
+            const maxTop = scrollBar.clientHeight - scrollThumb.clientHeight;
+            scrollThumb.style.top = `${scrollPercentage * maxTop}px`;
+        }
+
+        function selectRomColor(e) {
+            const index = parseInt(e.target.dataset.index);
+            paletteData = new Uint16Array(16);
+            for (let i = 0; i < 16; i++) {
+                if ((index + i) * 2 + 1 < romData.length) {
+                    paletteData[i] = (romData[(index + i) * 2 + 1] << 8) | romData[(index + i) * 2];
+                }
+            }
+            selectedColorIndex = -1;
+            displayPalette();
+            updateUIState(true);
+            saveState();
+        }
+
         function addNewPalette(){
             paletteData=new Uint16Array(16);
             displayPalette();
             updateUIState(true);
             saveState();
         }
+
         function toggleRow(){
             if(paletteData.length===16){
                 const newRow=new Uint16Array(16);
@@ -227,6 +374,7 @@
             updateUIState(true);
             saveState();
         }
+
         function selectColor(e){
             const clickedIndex=parseInt(e.target.dataset.index);
             selectedColorIndex=clickedIndex===selectedColorIndex?-1:clickedIndex;
@@ -234,6 +382,7 @@
             displayPalette();
             updateSliderState();
         }
+
         function updateColorEditor(){
             if(selectedColorIndex===-1||selectedColorIndex>=paletteData.length){
                 resetSliders();
@@ -245,6 +394,7 @@
             document.getElementById('blueSlider').value=(c>>8)&15;
             updateSliderValues(false);
         }
+
         function updateSliderValues(s=true){
             const r=parseInt(document.getElementById('redSlider').value);
             const g=parseInt(document.getElementById('greenSlider').value);
@@ -257,6 +407,7 @@
             document.getElementById('bluePreview').style.backgroundColor=`rgb(0,0,${b*17})`;
             if(s&&selectedColorIndex!==-1)updateColor(s);
         }
+
         function updateColor(s=true){
             if(selectedColorIndex===-1)return;
             const r=parseInt(document.getElementById('redSlider').value);
@@ -266,7 +417,9 @@
             displayPalette();
             if(s) saveState();
         }
+
         sliders.forEach(i=>document.getElementById(i).addEventListener('input',()=>updateSliderValues(true)));
+
         document.getElementById('undoButton').addEventListener('click', function() {
             if (historyIndex > 0) {
                 historyIndex--;
@@ -276,6 +429,7 @@
                 updateUIState(true);
             }
         });
+
         document.getElementById('redoButton').addEventListener('click', function() {
             if (historyIndex < history.length - 1) {
                 historyIndex++;
@@ -285,6 +439,7 @@
                 updateUIState(true);
             }
         });
+
         document.getElementById('exportPngButton').addEventListener('click',function(){
             const c=document.createElement('canvas');
             const x=c.getContext('2d');
@@ -303,12 +458,26 @@
             k.href=c.toDataURL();
             k.click();
         });
+
         document.getElementById('exportPaletteButton').addEventListener('click',function(){
             const b=new Blob([paletteData.buffer],{type:'application/octet-stream'});
             const l=document.createElement('a');
             l.download=inputFileName.replace(/\.[^/.]+$/,"")+".pal";
             l.href=URL.createObjectURL(b);
             l.click();
+        });
+
+        // New function to handle the "Go" button click
+        document.getElementById('goButton').addEventListener('click', function() {
+            const hexInput = document.getElementById('hexInput');
+            const address = parseInt(hexInput.value, 16);
+            if (isNaN(address) || address < 0 || address >= romData.length) {
+                alert('Invalid hex address');
+                return;
+            }
+            romScrollPosition = Math.floor(address / 32);
+            displayRomPalette();
+            updateScrollThumbPosition();
         });
     </script>
 </body>
