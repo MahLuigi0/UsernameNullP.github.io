@@ -16,41 +16,45 @@ dc.b    dSnareS3, $18, dKickS3, dKickS3, dSnareS3, $06, dSnareS3, dSnareS3, dSna
     <pre id="output"></pre>
 
     <script>
-        function convert() {
-            const input = document.getElementById('input').value;
-            const outputElement = document.getElementById('output');
+def convert_input(input_str):
+    input_parts = [part.strip() for part in input_str.split(',')]
+    output = []
+    current_voice = ''
+    current_line = ''
 
-            // Split the input into parts
-            const parts = input.split(',').map(part => part.trim());
+    for part in input_parts:
+        if part.startswith('dSnareS3'):
+            if current_voice != 'sSnareS3':
+                if current_line:
+                    output.append(current_line.strip())
+                output.append('smpsSetvoice    sSnareS3')
+                current_voice = 'sSnareS3'
+                current_line = 'dc.b    nSnareS3'
+            else:
+                current_line += ', nSnareS3'
+        elif part.startswith('dKickS3'):
+            if current_voice != 'sKickS3':
+                if current_line:
+                    output.append(current_line.strip())
+                output.append('smpsSetvoice    sKickS3')
+                current_voice = 'sKickS3'
+                current_line = 'dc.b    nKickS3'
+            else:
+                current_line += ', nKickS3'
+        elif part.startswith('$'):
+            current_line += ', ' + part
+        else:
+            current_line += ', ' + part
 
-            // Initialize variables
-            let currentVoice = '';
-            let output = '';
+    if current_line:
+        output.append(current_line.strip())
 
-            parts.forEach(part => {
-                if (part.startsWith('dSnareS3')) {
-                    if (currentVoice !== 'sSnareS3') {
-                        output += 'smpsSetvoice    sSnareS3\n';
-                        currentVoice = 'sSnareS3';
-                    }
-                    output += `dc.b    nSnareS3`;
-                } else if (part.startsWith('dKickS3')) {
-                    if (currentVoice !== 'sKickS3') {
-                        output += 'smpsSetvoice    sKickS3\n';
-                        currentVoice = 'sKickS3';
-                    }
-                    output += `dc.b    nKickS3`;
-                } else {
-                    output += `dc.b    ${part}`;
-                }
-                output += ', ';
-            });
+    return '\n'.join(output)
 
-            // Remove the trailing comma and space, and format the output
-            output = output.trim().replace(/, $/, '').replace(/dc\.b/g, '\ndc.b');
-            
-            outputElement.textContent = output.trim();
-        }
+# Test the function
+input_str = "dc.b    dSnareS3, $18, dKickS3, dKickS3, dSnareS3, $06, dSnareS3, dSnareS3, dSnareS3"
+converted_output = convert_input(input_str)
+print(converted_output)
     </script>
 </body>
 </html>
