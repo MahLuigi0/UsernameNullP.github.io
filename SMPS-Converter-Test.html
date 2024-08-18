@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SMPS Converter Tool</title>
+    <title>Sample Converter Tool</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -15,6 +15,7 @@
             width: 100%;
             height: 300px;
             margin-bottom: 10px;
+            font-family: monospace;
         }
         button {
             padding: 10px;
@@ -29,7 +30,7 @@
     </style>
 </head>
 <body>
-    <h1>SMPS Converter Tool</h1>
+    <h1>Sample Converter Tool</h1>
     <textarea id="input" placeholder="Enter your input here..."></textarea>
     <button onclick="convert()">Convert</button>
     <textarea id="output" readonly></textarea>
@@ -39,9 +40,14 @@
             // Remove "dc.b" from the beginning of the input if present
             input = input.replace(/^dc\.b\s+/, '');
             
-            // Check if the line is a label or SMPS command
-            if (input.includes(':') || input.trim().startsWith('smps')) {
+            // Check if the line is a label
+            if (input.trim().endsWith(':')) {
                 return input.trim();
+            }
+
+            // Check if the line is an SMPS command
+            if (input.trim().startsWith('smps')) {
+                return '    ' + input.trim();
             }
 
             const items = input.split(',').map(item => item.trim());
@@ -55,10 +61,10 @@
                     const voice = item.substring(1);
                     if (voice !== currentVoice) {
                         if (lineItems.length > 0) {
-                            output += 'dc.b    ' + lineItems.join(', ') + '\n';
+                            output += '    dc.b    ' + lineItems.join(', ') + '\n';
                             lineItems = [];
                         }
-                        output += `smpsSetvoice    s${voice}\n`;
+                        output += 'smpsSetvoice    s' + voice + '\n';
                         currentVoice = voice;
                     }
                     lineItems.push(`n${voice}`);
@@ -69,7 +75,7 @@
 
             // Output any remaining items
             if (lineItems.length > 0) {
-                output += 'dc.b    ' + lineItems.join(', ');
+                output += '    dc.b    ' + lineItems.join(', ');
             }
 
             return output.trim();
@@ -89,6 +95,9 @@
 
             // Remove trailing newline
             output = output.trim();
+
+            // Add indentation to any remaining unindented smpsSetvoice lines
+            output = output.replace(/^smpsSetvoice/gm, '    smpsSetvoice');
 
             document.getElementById('output').value = output;
         }
