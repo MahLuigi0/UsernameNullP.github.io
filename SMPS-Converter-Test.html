@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Style Converter</title>
+</head>
+<body>
+    <h1>Code Style Converter</h1>
+    
+    <textarea id="input" rows="5" cols="50"></textarea>
+    <br>
+    <button onclick="convert()">Convert</button>
+    <br>
+    <textarea id="output" rows="5" cols="50" readonly></textarea>
+
+    <script>function convert() {
+    const input = document.getElementById('input').value;
+    const output = document.getElementById('output');
+    
+    if (input.includes('smpsSetvoice')) {
+        output.value = convertToCompact(input);
+    } else {
+        output.value = convertToExpanded(input);
+    }
+}
+
+function convertToCompact(input) {
+    const lines = input.split('\n');
+    let result = 'dc.b    ';
+    let currentVoice = '';
+
+    for (let line of lines) {
+        if (line.includes('smpsSetvoice')) {
+            currentVoice = line.split('    ')[1];
+        } else if (line.includes('dc.b')) {
+            const parts = line.split('    ')[1].split(', ');
+            for (let part of parts) {
+                if (part.startsWith('n')) {
+                    result += part.replace('n', 'd') + ', ';
+                } else {
+                    result += part + ', ';
+                }
+            }
+        }
+    }
+
+    return result.slice(0, -2);  // Remove trailing comma and space
+}
+
+function convertToExpanded(input) {
+    const parts = input.split(', ');
+    let result = '';
+    let currentVoice = '';
+
+    for (let part of parts) {
+        if (part.startsWith('d') && part !== 'dc.b') {
+            if (currentVoice !== part.slice(1, -2)) {
+                currentVoice = part.slice(1, -2);
+                result += `smpsSetvoice    s${currentVoice}\n`;
+            }
+            result += `dc.b    ${part.replace('d', 'n')}\n`;
+        } else {
+            result += `dc.b    ${part}\n`;
+        }
+    }
+
+    return result.trim();
+}</script>
+</body>
+</html>
