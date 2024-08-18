@@ -35,9 +35,7 @@
     <textarea id="output" readonly></textarea>
 
     <script>
-        function convert() {
-            let input = document.getElementById('input').value;
-            
+        function processLine(input) {
             // Remove "dc.b" from the beginning of the input if present
             input = input.replace(/^dc\.b\s+/, '');
             
@@ -69,7 +67,22 @@
                 output += 'dc.b    ' + lineItems.join(', ') + '\n';
             }
 
-            // Remove trailing newline if present
+            return output.trim();
+        }
+
+        function convert() {
+            const input = document.getElementById('input').value;
+            const lines = input.split('\n');
+            let output = '';
+
+            for (let line of lines) {
+                line = line.trim();
+                if (line) {
+                    output += processLine(line) + '\n\n';
+                }
+            }
+
+            // Remove trailing newlines
             output = output.trim();
 
             document.getElementById('output').value = output;
