@@ -3,58 +3,77 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DC.B to SMPS Converter</title>
+    <title>SMPS Converter Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        textarea {
+            width: 100%;
+            height: 200px;
+            margin-bottom: 10px;
+        }
+        button {
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
 </head>
 <body>
-    <h2>DC.B to SMPS Converter</h2>
-    <textarea id="input" rows="4" cols="50">
-dc.b    dSnareS3, $18, dKickS3, dKickS3, dSnareS3, $06, dSnareS3, dSnareS3, dSnareS3
-    </textarea>
-    <br>
+    <h1>SMPS Converter Tool</h1>
+    <textarea id="input" placeholder="Enter your input here..."></textarea>
     <button onclick="convert()">Convert</button>
-    <h3>Output</h3>
-    <pre id="output"></pre>
+    <textarea id="output" readonly></textarea>
 
     <script>
-def convert_input(input_str):
-    input_parts = [part.strip() for part in input_str.split(',')]
-    output = []
-    current_voice = ''
-    current_line = ''
+        function convert() {
+            let input = document.getElementById('input').value;
+            
+            // Remove "dc.b" from the beginning of the input if present
+            input = input.replace(/^dc\.b\s+/, '');
+            
+            const items = input.split(',').map(item => item.trim());
+            let output = '';
+            let currentVoice = '';
+            let lineItems = [];
 
-    for part in input_parts:
-        if part.startswith('dSnareS3'):
-            if current_voice != 'sSnareS3':
-                if current_line:
-                    output.append(current_line.strip())
-                output.append('smpsSetvoice    sSnareS3')
-                current_voice = 'sSnareS3'
-                current_line = 'dc.b    nSnareS3'
-            else:
-                current_line += ', nSnareS3'
-        elif part.startswith('dKickS3'):
-            if current_voice != 'sKickS3':
-                if current_line:
-                    output.append(current_line.strip())
-                output.append('smpsSetvoice    sKickS3')
-                current_voice = 'sKickS3'
-                current_line = 'dc.b    nKickS3'
-            else:
-                current_line += ', nKickS3'
-        elif part.startswith('$'):
-            current_line += ', ' + part
-        else:
-            current_line += ', ' + part
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                if (item.startsWith('d') && !item.startsWith('$')) {
+                    const voice = item.substring(1);
+                    if (voice !== currentVoice) {
+                        if (lineItems.length > 0) {
+                            output += 'dc.b    ' + lineItems.join(', ') + '\n';
+                            lineItems = [];
+                        }
+                        output += `smpsSetvoice    s${voice}\n`;
+                        currentVoice = voice;
+                    }
+                    lineItems.push(`n${voice}`);
+                } else {
+                    lineItems.push(item);
+                }
+            }
 
-    if current_line:
-        output.append(current_line.strip())
+            // Output any remaining items
+            if (lineItems.length > 0) {
+                output += 'dc.b    ' + lineItems.join(', ') + '\n';
+            }
 
-    return '\n'.join(output)
+            // Remove trailing newline if present
+            output = output.trim();
 
-# Test the function
-input_str = "dc.b    dSnareS3, $18, dKickS3, dKickS3, dSnareS3, $06, dSnareS3, dSnareS3, dSnareS3"
-converted_output = convert_input(input_str)
-print(converted_output)
+            document.getElementById('output').value = output;
+        }
     </script>
 </body>
 </html>
