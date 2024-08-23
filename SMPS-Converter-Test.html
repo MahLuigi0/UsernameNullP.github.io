@@ -23,6 +23,7 @@
             color: white;
             border: none;
             cursor: pointer;
+            margin-right: 10px;
         }
         button:hover {
             background-color: #45a049;
@@ -32,7 +33,10 @@
 <body>
     <h1>SMPS Converter Tool</h1>
     <textarea id="input" placeholder="Enter your input here..."></textarea>
-    <button onclick="convert()">Convert</button>
+    <div>
+        <button onclick="convert()">Convert</button>
+        <button onclick="saveAsAsm()">Save as .asm</button>
+    </div>
     <textarea id="output" readonly></textarea>
 
     <script>
@@ -100,6 +104,22 @@
             output = output.replace(/^smpsSetvoice/gm, '    smpsSetvoice');
 
             document.getElementById('output').value = output;
+        }
+
+        function saveAsAsm() {
+            const output = document.getElementById('output').value;
+            if (!output) {
+                alert('Please convert some data first.');
+                return;
+            }
+
+            const blob = new Blob([output], {type: 'text/plain'});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'converted_output.asm';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
         }
     </script>
 </body>
