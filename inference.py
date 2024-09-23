@@ -59,20 +59,14 @@ class Predictor(BasePredictor):
         print(f"input cutoff = {input_cutoff}")
         
         is_stereo = len(audio.shape) == 2
-        if is_stereo:
-            print("audio is stereo")
-            audio_ch1, audio_ch2 = audio[:, 0], audio[:, 1]
-        else:
-            print("Audio is mono")
-            audio_ch1 = audio
+        audio_channels = [audio] if not is_stereo else [audio[:, 0], audio[:, 1]]
+        print("audio is stereo" if is_stereo else "Audio is mono")
 
         chunk_samples = int(chunk_size * sr)
         overlap_samples = int(overlap * chunk_samples)
-
         output_chunk_samples = int(chunk_size * self.sr)
         output_overlap_samples = int(overlap * output_chunk_samples)
-        enable_overlap = True if overlap > 0 else False
-
+        enable_overlap = overlap > 0
         print(f"enable_overlap = {enable_overlap}")
 
         def process_chunks(audio):
@@ -84,69 +78,25 @@ class Predictor(BasePredictor):
                 chunk = audio[start:end]
                 if len(chunk) < chunk_samples:
                     original_lengths.append(len(chunk))
-                    pad = np.zeros(chunk_samples - len(chunk))
-                    chunk = np.concatenate([chunk, pad])
+                    chunk = np.concatenate([chunk, np.zeros(chunk_samples - len(chunk))])
                 else:
                     original_lengths.append(chunk_samples)
                 chunks.append(chunk)
                 start += chunk_samples - overlap_samples if enable_overlap else chunk_samples
             return chunks, original_lengths
 
-        chunks_ch1, original_lengths_ch1 = process_chunks(audio_ch1)
-        if is_stereo:
-            chunks_ch2, original_lengths_ch2 = process_chunks(audio_ch2)
-
+        chunks_per_channel = [process_chunks(channel) for channel in audio_channels]
         sample_rate_ratio = self.sr / sr
-        total_length = len(chunks_ch1) * output_chunk_samples - (len(chunks_ch1) - 1) * (output_overlap_samples if enable_overlap else 0)
-        reconstructed_ch1 = np.zeros((1, total_length))
+        total_length = len(chunks_per_channel[0][0]) * output_chunk_samples - (len(chunks_per_channel[0][0]) - 1) * (output_overlap_samples if enable_overlap else 0)
+        reconstructed_channels = [np.zeros((1, total_length)) for _ in audio_channels]
 
         meter_before = pyln.Meter(sr)
         meter_after = pyln.Meter(self.sr)
 
-        for i, chunk in enumerate(chunks_ch1):
-            loudness_before = meter_before.integrated_loudness(chunk)
-            print(f"Processing chunk {i+1} of {len(chunks_ch1)} for Left/Mono channel")
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as temp_wav:
-                sf.write(temp_wav.name, chunk, sr)
-
-                out_chunk = super_resolution(
-                    self.audiosr,
-                    temp_wav.name,
-                    seed=seed,
-                    guidance_scale=guidance_scale,
-                    ddim_steps=ddim_steps,
-                    latent_t_per_second=12.8
-                )
-                out_chunk = out_chunk[0]
-                num_samples_to_keep = int(original_lengths_ch1[i] * sample_rate_ratio)
-                out_chunk = out_chunk[:, :num_samples_to_keep].squeeze()
-
-                loudness_after = meter_after.integrated_loudness(out_chunk)
-                out_chunk = pyln.normalize.loudness(out_chunk, loudness_after, loudness_before)
-
-                if enable_overlap:
-                    actual_overlap_samples = min(output_overlap_samples, num_samples_to_keep)
-                    fade_out = np.linspace(1., 0., actual_overlap_samples)
-                    fade_in = np.linspace(0., 1., actual_overlap_samples)
-
-                    if i == 0:
-                        out_chunk[-actual_overlap_samples:] *= fade_out
-                    elif i < len(chunks_ch1) - 1:
-                        out_chunk[:actual_overlap_samples] *= fade_in
-                        out_chunk[-actual_overlap_samples:] *= fade_out
-                    else:
-                        out_chunk[:actual_overlap_samples] *= fade_in
-
-                start = i * (output_chunk_samples - output_overlap_samples if enable_overlap else output_chunk_samples)
-                end = start + out_chunk.shape[0]
-                reconstructed_ch1[0, start:end] += out_chunk.flatten()
-
-        if is_stereo:
-            reconstructed_ch2 = np.zeros((1, total_length))
-
-            for i, chunk in enumerate(chunks_ch2):
-                print(f"Processing chunk {i+1} of {len(chunks_ch2)} for Right channel")
+        for ch_idx, (chunks, original_lengths) in enumerate(chunks_per_channel):
+            for i, chunk in enumerate(chunks):
                 loudness_before = meter_before.integrated_loudness(chunk)
+                print(f"Processing chunk {i+1} of {len(chunks)} for {'Left/Mono' if ch_idx == 0 else 'Right'} channel")
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as temp_wav:
                     sf.write(temp_wav.name, chunk, sr)
 
@@ -159,7 +109,7 @@ class Predictor(BasePredictor):
                         latent_t_per_second=12.8
                     )
                     out_chunk = out_chunk[0]
-                    num_samples_to_keep = int(original_lengths_ch2[i] * sample_rate_ratio)
+                    num_samples_to_keep = int(original_lengths[i] * sample_rate_ratio)
                     out_chunk = out_chunk[:, :num_samples_to_keep].squeeze()
 
                     loudness_after = meter_after.integrated_loudness(out_chunk)
@@ -172,7 +122,7 @@ class Predictor(BasePredictor):
 
                         if i == 0:
                             out_chunk[-actual_overlap_samples:] *= fade_out
-                        elif i < len(chunks_ch1) - 1:
+                        elif i < len(chunks) - 1:
                             out_chunk[:actual_overlap_samples] *= fade_in
                             out_chunk[-actual_overlap_samples:] *= fade_out
                         else:
@@ -180,11 +130,9 @@ class Predictor(BasePredictor):
 
                     start = i * (output_chunk_samples - output_overlap_samples if enable_overlap else output_chunk_samples)
                     end = start + out_chunk.shape[0]
-                    reconstructed_ch2[0, start:end] += out_chunk.flatten()
+                    reconstructed_channels[ch_idx][0, start:end] += out_chunk.flatten()
 
-                reconstructed_audio = np.stack([reconstructed_ch1, reconstructed_ch2], axis=-1)
-        else:
-            reconstructed_audio = reconstructed_ch1
+        reconstructed_audio = np.stack(reconstructed_channels, axis=-1) if is_stereo else reconstructed_channels[0]
 
         if multiband_ensemble:
             low, _ = librosa.load(input_file, sr=48000, mono=False)
