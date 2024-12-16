@@ -194,7 +194,7 @@ if __name__ == "__main__":
     parser.add_argument("--overlap", help="Overlap value", type=float, required=False, default=0.04)
     parser.add_argument("--multiband_ensemble", type=bool, help="Use multiband ensemble with input")
     parser.add_argument("--input_cutoff", help="Define the crossover of audio input in the multiband ensemble", type=int, required=False, default=12000)
-    parser.add_argument("--model_name", help="Model name to use", type=str, required=False, default="basic", choices=["basic", "speech"])
+    parser.add_argument("--model_name", help="Model name to use", type=str, default="basic", choices=["basic", "speech"])
 
     args = parser.parse_args()
 
@@ -210,6 +210,8 @@ if __name__ == "__main__":
     model_name = args.model_name
 
     crossover_freq = input_cutoff - 1000
+
+    print(f"Using model: {model_name}")
 
     p = Predictor()
     p.setup(model_name=model_name)
