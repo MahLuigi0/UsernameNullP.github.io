@@ -12,14 +12,14 @@ import librosa
 from audiosr import build_model, super_resolution
 from scipy import signal
 import pyloudnorm as pyln
-import warnings
 
+import warnings
 warnings.filterwarnings("ignore")
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
 torch.set_float32_matmul_precision("high")
 
-def match_array_shapes(array_1: np.ndarray, array_2: np.ndarray):
+def match_array_shapes(array_1:np.ndarray, array_2:np.ndarray):
     if (len(array_1.shape) == 1) & (len(array_2.shape) == 1):
         if array_1.shape[0] > array_2.shape[0]:
             array_1 = array_1[:array_2.shape[0]]
@@ -27,17 +27,17 @@ def match_array_shapes(array_1: np.ndarray, array_2: np.ndarray):
             array_1 = np.pad(array_1, ((array_2.shape[0] - array_1.shape[0], 0)), 'constant', constant_values=0)
     else:
         if array_1.shape[1] > array_2.shape[1]:
-            array_1 = array_1[:, :array_2.shape[1]]
+            array_1 = array_1[:,:array_2.shape[1]]
         elif array_1.shape[1] < array_2.shape[1]:
             padding = array_2.shape[1] - array_1.shape[1]
-            array_1 = np.pad(array_1, ((0, 0), (0, padding)), 'constant', constant_values=0)
+            array_1 = np.pad(array_1, ((0,0), (0,padding)), 'constant', constant_values=0)
     return array_1
 
 def lr_filter(audio, cutoff, filter_type, order=12, sr=48000):
     audio = audio.T
     nyquist = 0.5 * sr
     normal_cutoff = cutoff / nyquist
-    b, a = signal.butter(order // 2, normal_cutoff, btype=filter_type, analog=False)
+    b, a = signal.butter(order//2, normal_cutoff, btype=filter_type, analog=False)
     sos = signal.tf2sos(b, a)
     filtered_audio = signal.sosfiltfilt(sos, audio)
     return filtered_audio.T
@@ -51,11 +51,13 @@ class Predictor(BasePredictor):
         self.audiosr = build_model(model_name=self.model_name, device=self.device)
         print("Model loaded!")
 
-    def process_audio(self, input_file, chunk_size=5.12, overlap=0.1, seed=None, guidance_scale=3.5, ddim_steps=50):
+    def process_audio(self, input_file, chunk_size=5.12, overlap=0.1, seed=None, guidance_scale=3.5, ddim_steps=50, low_pass=False):
         audio, sr = librosa.load(input_file, sr=input_cutoff * 2, mono=False)
+        if low_pass:
+            audio = lr_filter(audio, input_cutoff, 'lowpass', order=12, sr=sr)
         audio = audio.T
         sr = input_cutoff * 2
-        
+        print(f"audio.shape = {audio.shape}")
         print(f"input cutoff = {input_cutoff}")
         
         is_stereo = len(audio.shape) == 2
@@ -68,7 +70,7 @@ class Predictor(BasePredictor):
         output_overlap_samples = int(overlap * output_chunk_samples)
         enable_overlap = overlap > 0
         print(f"enable_overlap = {enable_overlap}")
-
+        
         def process_chunks(audio):
             chunks = []
             original_lengths = []
@@ -85,6 +87,7 @@ class Predictor(BasePredictor):
                 start += chunk_samples - overlap_samples if enable_overlap else chunk_samples
             return chunks, original_lengths
 
+        # Process both channels (mono or stereo)
         chunks_per_channel = [process_chunks(channel) for channel in audio_channels]
         sample_rate_ratio = self.sr / sr
         total_length = len(chunks_per_channel[0][0]) * output_chunk_samples - (len(chunks_per_channel[0][0]) - 1) * (output_overlap_samples if enable_overlap else 0)
@@ -92,7 +95,8 @@ class Predictor(BasePredictor):
 
         meter_before = pyln.Meter(sr)
         meter_after = pyln.Meter(self.sr)
-
+        
+        # Process chunks for each channel
         for ch_idx, (chunks, original_lengths) in enumerate(chunks_per_channel):
             for i, chunk in enumerate(chunks):
                 loudness_before = meter_before.integrated_loudness(chunk)
@@ -108,10 +112,10 @@ class Predictor(BasePredictor):
                         ddim_steps=ddim_steps,
                         latent_t_per_second=12.8
                     )
+
                     out_chunk = out_chunk[0]
                     num_samples_to_keep = int(original_lengths[i] * sample_rate_ratio)
                     out_chunk = out_chunk[:, :num_samples_to_keep].squeeze()
-
                     loudness_after = meter_after.integrated_loudness(out_chunk)
                     out_chunk = pyln.normalize.loudness(out_chunk, loudness_after, loudness_before)
 
@@ -137,11 +141,9 @@ class Predictor(BasePredictor):
         if multiband_ensemble:
             low, _ = librosa.load(input_file, sr=48000, mono=False)
             output = match_array_shapes(reconstructed_audio[0].T, low)
-
             low = lr_filter(low.T, crossover_freq, 'lowpass', order=10)
             high = lr_filter(output.T, crossover_freq, 'highpass', order=10)
             high = lr_filter(high, 23000, 'lowpass', order=2)
-
             output = low + high
         else:
             output = reconstructed_audio[0]
@@ -149,14 +151,14 @@ class Predictor(BasePredictor):
         return output
 
     def predict(self,
-                input_file: Path = Input(description="Audio to upsample"),
-                ddim_steps: int = Input(description="Number of inference steps", default=50, ge=10, le=500),
-                guidance_scale: float = Input(description="Scale for classifier free guidance", default=3.5, ge=1.0, le=20.0),
-                overlap: float = Input(description="overlap size", default=0.04),
-                chunk_size: float = Input(description="chunksize", default=10.24),
-                seed: int = Input(description="Random seed. Leave blank to randomize the seed", default=None)
-                ) -> Path:
-
+        input_file: Path = Input(description="Audio to upsample"),
+        ddim_steps: int = Input(description="Number of inference steps", default=50, ge=10, le=500),
+        guidance_scale: float = Input(description="Scale for classifier free guidance", default=3.5, ge=1.0, le=20.0),
+        overlap: float = Input(description="overlap size", default=0.04),
+        chunk_size: float = Input(description="chunksize", default=10.24),
+        seed: int = Input(description="Random seed. Leave blank to randomize the seed", default=None),
+        low_pass: bool = Input(description="Apply low pass filter", default=False)
+    ) -> Path:
         if seed == 0:
             seed = random.randint(0, 2**32 - 1)
         print(f"Setting seed to: {seed}")
@@ -173,28 +175,29 @@ class Predictor(BasePredictor):
             overlap=overlap,
             seed=seed,
             guidance_scale=guidance_scale,
-            ddim_steps=ddim_steps
+            ddim_steps=ddim_steps,
+            low_pass=low_pass
         )
-
+        
         filename = os.path.splitext(os.path.basename(input_file))[0]
-        sf.write(f"{output_folder}/SR_{filename}.wav", data=waveform, samplerate=48000, subtype="PCM_16")
+        sf.write(f"{output_folder}/SR_{filename}.wav", data=waveform, samplerate=48000,  subtype="PCM_16")
         print(f"file created: {output_folder}/SR_{filename}.wav")
         del self.audiosr, waveform
         gc.collect()
         torch.cuda.empty_cache()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Audio super-resolution inference.")
+    parser = argparse.ArgumentParser(description="Find volume difference of two audio files.")
     parser.add_argument("--input", help="Path to input audio file")
     parser.add_argument("--output", help="Output folder")
     parser.add_argument("--ddim_steps", help="Number of ddim steps", type=int, required=False, default=50)
-    parser.add_argument("--chunk_size", help="Chunk size", type=float, required=False, default=10.24)
-    parser.add_argument("--guidance_scale", help="Guidance scale value", type=float, required=False, default=3.5)
+    parser.add_argument("--chunk_size", help="chunk size", type=float, required=False, default=10.24)
+    parser.add_argument("--guidance_scale", help="Guidance scale value",  type=float, required=False, default=3.5)
     parser.add_argument("--seed", help="Seed value, 0 = random seed", type=int, required=False, default=0)
-    parser.add_argument("--overlap", help="Overlap value", type=float, required=False, default=0.04)
+    parser.add_argument("--overlap", help="overlap value", type=float, required=False, default=0.04)
     parser.add_argument("--multiband_ensemble", type=bool, help="Use multiband ensemble with input")
     parser.add_argument("--input_cutoff", help="Define the crossover of audio input in the multiband ensemble", type=int, required=False, default=12000)
-    parser.add_argument("--model_name", help="Model name to use", type=str, default="basic", choices=["basic", "speech"])
+    parser.add_argument("--low_pass", help="Apply low pass filter", type=bool, required=False, default=False)
 
     args = parser.parse_args()
 
@@ -207,21 +210,20 @@ if __name__ == "__main__":
     overlap = args.overlap
     input_cutoff = args.input_cutoff
     multiband_ensemble = args.multiband_ensemble
-    model_name = args.model_name
+    low_pass = args.low_pass
 
     crossover_freq = input_cutoff - 1000
 
-    print(f"Using model: {model_name}")
-
     p = Predictor()
-    p.setup(model_name=model_name)
+    p.setup()
     out = p.predict(
         input_file_path,
         ddim_steps=ddim_steps,
         guidance_scale=guidance_scale,
         seed=seed,
         chunk_size=chunk_size,
-        overlap=overlap
+        overlap=overlap,
+        low_pass=low_pass
     )
 
     del p
