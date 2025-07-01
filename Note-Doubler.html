@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SMPS Converter Tool (Note Length Doubler)</title>
+    <title>SMPS Note Length Doubler</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -31,117 +31,78 @@
     </style>
 </head>
 <body>
-    <h1>SMPS Converter Tool (Note Length Doubler)</h1>
-    <p>This version doubles the length of each note (e.g., <code>$03</code> becomes <code>$06</code>). Values are capped at <code>$FF</code>.</p>
+    <h1>SMPS Note Length Doubler</h1>
     <textarea id="input" placeholder="Enter your input here..."></textarea>
     <div>
-        <button onclick="convert()">Convert</button>
+        <button onclick="doubleNoteLengths()">Double Note Lengths</button>
         <button onclick="saveAsAsm()">Save as .asm</button>
     </div>
     <textarea id="output" readonly></textarea>
 
     <script>
-        function processLine(input) {
-            // Remove "dc.b" from the beginning of the input if present
-            input = input.replace(/^dc\.b\s+/, '');
-            
-            // Check if the line is a label
-            if (input.trim().endsWith(':')) {
-                return input.trim();
-            }
+        function doubleNoteLengths() {
+            const input = document.getElementById('input').value;
+            const lines = input.split('\n');
+            let outputLines = [];
 
-            // Check if the line is an SMPS command
-            if (input.trim().startsWith('smps')) {
-                return '    ' + input.trim();
-            }
+            for (const line of lines) {
+                const trimmedLine = line.trim();
 
-            const items = input.split(',').map(item => item.trim());
-            let output = '';
-            let currentVoice = '';
-            let lineItems = [];
-
-            for (let i = 0; i < items.length; i++) {
-                let item = items[i];
-                if (item.startsWith('d') && !item.startsWith('$')) {
-                    const voice = item.substring(1);
-                    if (voice !== currentVoice) {
-                        if (lineItems.length > 0) {
-                            output += '    dc.b    ' + lineItems.join(', ') + '\n';
-                            lineItems = [];
-                        }
-                        output += 'smpsSetvoice    s' + voice + '\n';
-                        currentVoice = voice;
-                    }
-                    lineItems.push(`n${voice}`);
-                } else {
-                    // Check if the item is a hexadecimal value (potential note length)
-                    if (item.startsWith('$')) {
-                        const hexValue = item.substring(1);
-                        const intValue = parseInt(hexValue, 16);
-
-                        // If it's a valid number, double it
-                        if (!isNaN(intValue)) {
-                            let doubledValue = intValue * 2;
-
-                            // Cap the value at 255 ($FF) as it's a byte
-                            if (doubledValue > 255) {
-                                doubledValue = 255;
-                            }
-
+                // Check if the line contains note data (starts with "dc.b")
+                if (trimmedLine.toLowerCase().startsWith('dc.b')) {
+                    // Preserve original indentation
+                    const indentation = line.match(/^\s*/)[0];
+                    
+                    // Isolate the data part of the line
+                    const dataPart = line.substring(line.toLowerCase().indexOf('dc.b') + 4).trim();
+                    const items = dataPart.split(',').map(item => item.trim());
+                    
+                    const newItems = items.map(item => {
+                        // Check if the item is a hexadecimal value (e.g., $0C, $F, $18)
+                        if (item.match(/^\$[0-9A-Fa-f]+$/i)) {
+                            // Remove '$' and parse from hex to an integer
+                            const intValue = parseInt(item.substring(1), 16);
+                            
+                            // Double the value
+                            const doubledValue = intValue * 2;
+                            
+                            // Convert back to a hex string
                             let newHexValue = doubledValue.toString(16).toUpperCase();
                             
-                            // Pad with a leading zero if necessary
-                            if (newHexValue.length < 2) {
+                            // Pad with a leading zero if it's a single character (e.g., 6 -> 06)
+                            if (newHexValue.length === 1) {
                                 newHexValue = '0' + newHexValue;
                             }
                             
-                            item = '$' + newHexValue;
+                            return '$' + newHexValue;
+                        } else {
+                            // If it's not a hex value (e.g., nC4, smpsStop), return it unchanged
+                            return item;
                         }
-                    }
-                    lineItems.push(item);
+                    });
+
+                    // Reconstruct the line
+                    outputLines.push(indentation + 'dc.b    ' + newItems.join(', '));
+                } else {
+                    // If the line is not a "dc.b" line, add it to the output as is
+                    outputLines.push(line);
                 }
             }
 
-            // Output any remaining items
-            if (lineItems.length > 0) {
-                output += '    dc.b    ' + lineItems.join(', ');
-            }
-
-            return output.trim();
-        }
-
-        function convert() {
-            const input = document.getElementById('input').value;
-            const lines = input.split('\n');
-            let output = '';
-
-            for (let line of lines) {
-                line = line.trim();
-                if (line) {
-                    output += processLine(line) + '\n';
-                }
-            }
-
-            // Remove trailing newline
-            output = output.trim();
-
-            // Add indentation to any remaining unindented smpsSetvoice lines
-            output = output.replace(/^smpsSetvoice/gm, '    smpsSetvoice');
-
-            document.getElementById('output').value = output;
+            document.getElementById('output').value = outputLines.join('\n');
         }
 
         function saveAsAsm() {
             const output = document.getElementById('output').value;
             if (!output) {
-                alert('Please convert some data first.');
+                alert('Please process some data first.');
                 return;
             }
 
             const blob = new Blob([output], {type: 'text/plain'});
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = 'converted_output_doubled.asm';
+            a.download = 'converted_output.asm';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
