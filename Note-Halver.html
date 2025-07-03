@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SMPS Note Length Doubler</title>
+    <title>SMPS Note Length Halver</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -31,16 +31,16 @@
     </style>
 </head>
 <body>
-    <h1>SMPS Note Length Doubler</h1>
+    <h1>SMPS Note Length Halver</h1>
     <textarea id="input" placeholder="Enter your input here..."></textarea>
     <div>
-        <button onclick="doubleNoteLengths()">Double Note Lengths</button>
+        <button onclick="halveNoteLengths()">Halve Note Lengths</button>
         <button onclick="saveAsAsm()">Save as .asm</button>
     </div>
     <textarea id="output" readonly></textarea>
 
     <script>
-        function doubleNoteLengths() {
+        function halveNoteLengths() {
             const input = document.getElementById('input').value;
             const lines = input.split('\n');
             let outputLines = [];
@@ -63,11 +63,11 @@
                             // Remove '$' and parse from hex to an integer
                             const intValue = parseInt(item.substring(1), 16);
                             
-                            // Double the value
-                            const doubledValue = intValue * 2;
+                            // Divide the value by 2 and round to the nearest integer
+                            const halvedValue = Math.round(intValue / 2);
                             
                             // Convert back to a hex string
-                            let newHexValue = doubledValue.toString(16).toUpperCase();
+                            let newHexValue = halvedValue.toString(16).toUpperCase();
                             
                             // Pad with a leading zero if it's a single character (e.g., 6 -> 06)
                             if (newHexValue.length === 1) {
