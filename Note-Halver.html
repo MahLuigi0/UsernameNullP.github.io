@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMPS Note Length Doubler</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        textarea {
+            width: 100%;
+            height: 300px;
+            margin-bottom: 10px;
+            font-family: monospace;
+        }
+        button {
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <h1>SMPS Note Length Doubler</h1>
+    <textarea id="input" placeholder="Enter your input here..."></textarea>
+    <div>
+        <button onclick="doubleNoteLengths()">Double Note Lengths</button>
+        <button onclick="saveAsAsm()">Save as .asm</button>
+    </div>
+    <textarea id="output" readonly></textarea>
+
+    <script>
+        function doubleNoteLengths() {
+            const input = document.getElementById('input').value;
+            const lines = input.split('\n');
+            let outputLines = [];
+
+            for (const line of lines) {
+                const trimmedLine = line.trim();
+
+                // Check if the line contains note data (starts with "dc.b")
+                if (trimmedLine.toLowerCase().startsWith('dc.b')) {
+                    // Preserve original indentation
+                    const indentation = line.match(/^\s*/)[0];
+                    
+                    // Isolate the data part of the line
+                    const dataPart = line.substring(line.toLowerCase().indexOf('dc.b') + 4).trim();
+                    const items = dataPart.split(',').map(item => item.trim());
+                    
+                    const newItems = items.map(item => {
+                        // Check if the item is a hexadecimal value (e.g., $0C, $F, $18)
+                        if (item.match(/^\$[0-9A-Fa-f]+$/i)) {
+                            // Remove '$' and parse from hex to an integer
+                            const intValue = parseInt(item.substring(1), 16);
+                            
+                            // Double the value
+                            const doubledValue = intValue * 2;
+                            
+                            // Convert back to a hex string
+                            let newHexValue = doubledValue.toString(16).toUpperCase();
+                            
+                            // Pad with a leading zero if it's a single character (e.g., 6 -> 06)
+                            if (newHexValue.length === 1) {
+                                newHexValue = '0' + newHexValue;
+                            }
+                            
+                            return '$' + newHexValue;
+                        } else {
+                            // If it's not a hex value (e.g., nC4, smpsStop), return it unchanged
+                            return item;
+                        }
+                    });
+
+                    // Reconstruct the line
+                    outputLines.push(indentation + 'dc.b    ' + newItems.join(', '));
+                } else {
+                    // If the line is not a "dc.b" line, add it to the output as is
+                    outputLines.push(line);
+                }
+            }
+
+            document.getElementById('output').value = outputLines.join('\n');
+        }
+
+        function saveAsAsm() {
+            const output = document.getElementById('output').value;
+            if (!output) {
+                alert('Please process some data first.');
+                return;
+            }
+
+            const blob = new Blob([output], {type: 'text/plain'});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'converted_output.asm';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+    </script>
+</body>
+</html>
