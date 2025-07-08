@@ -5,40 +5,60 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ultimate Game Gear Palette Editor</title>
   <style>
+    :root {
+      /* Color Palette */
+      --bg-color: #2c2c2c;
+      --panel-bg-color: #3c3c3c;
+      --text-color: #f0f0f0;
+      --button-bg-color: #4CAF50;
+      --button-upload-bg-color: #2196F3;
+      --button-disabled-bg-color: #555555;
+      --border-color: black;
+      --slider-thumb-color: #808080;
+      --selected-outline-color: gray;
+      /* Sizing */
+      --rom-panel-width: 400px;
+      --editor-panel-width: 380px;
+    }
     body {
       font-family: Arial, sans-serif;
       display: flex;
       flex-direction: column;
       align-items: center;
-      background-color: #2c2c2c;
-      color: #f0f0f0;
+      background-color: var(--bg-color);
+      color: var(--text-color);
     }
     .container {
       display: flex;
+      flex-wrap: wrap; /* Allow panels to wrap on smaller screens */
+      justify-content: center;
       margin-top: 20px;
+      gap: 10px;
     }
     .palette-section,
     .controls-section,
     .rom-section {
-      background-color: #3c3c3c;
+      background-color: var(--panel-bg-color);
       padding: 20px;
       box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-    }
-    .palette-section {
-      width: 380px;
-      height: 400px;
-      overflow-y: auto;
-      border-left: 1px solid black;
-      border-right: 1px solid black;
+      border: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
     }
     .rom-section {
-      width: 400px;
+      width: var(--rom-panel-width);
+      height: 400px;
+      position: relative;
+    }
+    #romPaletteDisplay {
+      overflow-y: auto;
+      flex-grow: 1;
+    }
+    .palette-section {
+      width: var(--editor-panel-width);
       height: 400px;
       overflow-y: auto;
-      position: relative;
-      border-right: 1px solid black;
     }
-    /* (Removed custom scrollbar elements – we now use the native scrollbar) */
     #paletteDisplay,
     #romPaletteDisplay {
       display: flex;
@@ -63,7 +83,7 @@
       margin: 1px;
     }
     .color-box.selected {
-      outline: 3px solid gray;
+      outline: 3px solid var(--selected-outline-color);
       outline-offset: -3px;
       z-index: 1;
     }
@@ -84,7 +104,7 @@
       margin-top: 10px;
       margin-right: 5px;
       padding: 5px 10px;
-      background-color: #4CAF50;
+      background-color: var(--button-bg-color);
       color: white;
       border: none;
       cursor: pointer;
@@ -92,11 +112,11 @@
     }
     button:disabled,
     .slider:disabled {
-      background-color: #555555;
+      background-color: var(--button-disabled-bg-color);
       cursor: not-allowed;
     }
     .file-upload-btn {
-      background-color: #2196F3;
+      background-color: var(--button-upload-bg-color);
       display: inline-block;
     }
     #fileInput,
@@ -118,27 +138,21 @@
       -webkit-appearance: none;
       width: 20px;
       height: 20px;
-      background: #808080;
+      background: var(--slider-thumb-color);
       cursor: pointer;
     }
     .slider::-moz-range-thumb {
       width: 20px;
       height: 20px;
-      background: #808080;
+      background: var(--slider-thumb-color);
       cursor: pointer;
     }
     .slider:disabled {
       opacity: 0.5;
     }
-    #redSlider {
-      background: linear-gradient(to right, #000000, #FF0000);
-    }
-    #greenSlider {
-      background: linear-gradient(to right, #000000, #00FF00);
-    }
-    #blueSlider {
-      background: linear-gradient(to right, #000000, #0000FF);
-    }
+    #redSlider { background: linear-gradient(to right, #000, #F00); }
+    #greenSlider { background: linear-gradient(to right, #000, #0F0); }
+    #blueSlider { background: linear-gradient(to right, #000, #00F); }
     .button-row {
       display: flex;
       justify-content: flex-start;
@@ -150,18 +164,18 @@
       display: inline-block;
       margin-left: 10px;
       vertical-align: middle;
+      border: 1px solid #555;
     }
-    /* The hex input area remains at the bottom of the rom section */
     #hexInputContainer {
       position: sticky;
-      bottom: 0;
+      bottom: -1px; /* Prevents gap */
       left: 0;
       right: 0;
       height: 40px;
       display: flex;
       align-items: center;
       padding: 0 10px;
-      background-color: #2c2c2c;
+      background-color: var(--bg-color);
       z-index: 2;
     }
     #hexInput {
@@ -169,27 +183,19 @@
       margin-right: 10px;
       padding: 5px;
       background-color: #4c4c4c;
-      color: #f0f0f0;
+      color: var(--text-color);
       border: none;
-    }
-    #goButton {
-      padding: 5px 10px;
-      background-color: #4CAF50;
-      color: white;
-      border: none;
-      cursor: pointer;
     }
   </style>
 </head>
 <body>
   <h1>Ultimate Game Gear Palette Editor</h1>
   <div class="container">
-    <!-- ROM section: now displays ALL palette rows with hex addresses -->
     <div class="rom-section">
       <div id="romPaletteDisplay"></div>
       <div id="hexInputContainer">
-        <input type="text" id="hexInput" placeholder="Hex Address" />
-        <button id="goButton">Go</button>
+        <input type="text" id="hexInput" placeholder="Hex Address" aria-label="Hex Address Input"/>
+        <button id="goButton" aria-label="Go to Hex Address">Go</button>
       </div>
     </div>
     <div class="palette-section">
@@ -200,31 +206,31 @@
         <h3>Edit Color</h3>
         <div class="slider-container">
           R:
-          <input type="range" class="slider" id="redSlider" min="0" max="15" value="0" />
+          <input type="range" class="slider" id="redSlider" min="0" max="15" value="0" aria-label="Red color component slider" />
           <span id="redValue">0</span>
           <div class="color-preview" id="redPreview"></div>
         </div>
         <div class="slider-container">
           G:
-          <input type="range" class="slider" id="greenSlider" min="0" max="15" value="0" />
+          <input type="range" class="slider" id="greenSlider" min="0" max="15" value="0" aria-label="Green color component slider" />
           <span id="greenValue">0</span>
           <div class="color-preview" id="greenPreview"></div>
         </div>
         <div class="slider-container">
           B:
-          <input type="range" class="slider" id="blueSlider" min="0" max="15" value="0" />
+          <input type="range" class="slider" id="blueSlider" min="0" max="15" value="0" aria-label="Blue color component slider" />
           <span id="blueValue">0</span>
           <div class="color-preview" id="bluePreview"></div>
         </div>
       </div>
       <div class="button-row">
-        <button id="rowButton">+ New Palette</button>
-        <button id="undoButton" disabled>Undo</button>
-        <button id="redoButton" disabled>Redo</button>
+        <button id="rowButton" aria-label="Add or remove palette row">+ New Palette</button>
+        <button id="undoButton" disabled aria-label="Undo last action">Undo</button>
+        <button id="redoButton" disabled aria-label="Redo last action">Redo</button>
       </div>
       <div class="button-row">
-        <button id="exportPngButton">Export PNG</button>
-        <button id="exportPaletteButton">Export Palette</button>
+        <button id="exportPngButton" aria-label="Export palette as PNG">Export PNG</button>
+        <button id="exportPaletteButton" aria-label="Export palette as PAL file">Export Palette</button>
         <label for="fileInput" class="file-upload-btn">Upload Palette/PNG</label>
         <input type="file" id="fileInput" accept=".pal,.bin,.png" />
       </div>
@@ -235,314 +241,357 @@
     </div>
   </div>
   <script>
-    (function () {
-      'use strict';
+    'use strict';
+    const PaletteEditor = {
+      // --- Constants ---
+      COLORS_PER_ROW: 16,
+      BYTES_PER_PALETTE: 32,
+      GG_COLOR_MULTIPLIER: 17, // 255 / 15
+      PNG_PIXEL_SIZE: 8,
+      // --- DOM Elements ---
+      dom: {},
+      // --- Application State ---
+      state: {
+        inputFileName: '',
+        paletteData: new Uint16Array(0),
+        selectedColorIndex: -1,
+        history: [],
+        historyIndex: -1,
+        romData: null,
+      },
 
-      // Cached DOM elements
-      const paletteDisplay = document.getElementById('paletteDisplay'),
-        romPaletteDisplay = document.getElementById('romPaletteDisplay'),
-        hexInput = document.getElementById('hexInput'),
-        goButton = document.getElementById('goButton'),
-        fileInput = document.getElementById('fileInput'),
-        romInput = document.getElementById('romInput'),
-        redSlider = document.getElementById('redSlider'),
-        greenSlider = document.getElementById('greenSlider'),
-        blueSlider = document.getElementById('blueSlider'),
-        redValue = document.getElementById('redValue'),
-        greenValue = document.getElementById('greenValue'),
-        blueValue = document.getElementById('blueValue'),
-        redPreview = document.getElementById('redPreview'),
-        greenPreview = document.getElementById('greenPreview'),
-        bluePreview = document.getElementById('bluePreview'),
-        rowButton = document.getElementById('rowButton'),
-        undoButton = document.getElementById('undoButton'),
-        redoButton = document.getElementById('redoButton'),
-        exportPngButton = document.getElementById('exportPngButton'),
-        exportPaletteButton = document.getElementById('exportPaletteButton'),
-        romSection = document.querySelector('.rom-section');
+      /**
+       * Initializes the application, caches DOM elements, and attaches event listeners.
+       */
+      init() {
+        this._cacheDom();
+        this._attachEventListeners();
+        this._updateUI();
+      },
 
-      const sliderElements = [redSlider, greenSlider, blueSlider];
-      const controlElements = [exportPngButton, exportPaletteButton, undoButton, redoButton];
+      /**
+       * Caches frequently accessed DOM elements.
+       */
+      _cacheDom() {
+        this.dom.paletteDisplay = document.getElementById('paletteDisplay');
+        this.dom.romPaletteDisplay = document.getElementById('romPaletteDisplay');
+        this.dom.hexInput = document.getElementById('hexInput');
+        this.dom.goButton = document.getElementById('goButton');
+        this.dom.fileInput = document.getElementById('fileInput');
+        this.dom.romInput = document.getElementById('romInput');
+        this.dom.sliders = {
+            red: document.getElementById('redSlider'),
+            green: document.getElementById('greenSlider'),
+            blue: document.getElementById('blueSlider'),
+        };
+        this.dom.values = {
+            red: document.getElementById('redValue'),
+            green: document.getElementById('greenValue'),
+            blue: document.getElementById('blueValue'),
+        };
+        this.dom.previews = {
+            red: document.getElementById('redPreview'),
+            green: document.getElementById('greenPreview'),
+            blue: document.getElementById('bluePreview'),
+        };
+        this.dom.buttons = {
+            row: document.getElementById('rowButton'),
+            undo: document.getElementById('undoButton'),
+            redo: document.getElementById('redoButton'),
+            exportPng: document.getElementById('exportPngButton'),
+            exportPalette: document.getElementById('exportPaletteButton'),
+        };
+      },
 
-      // Application state variables
-      let inputFileName = '',
-        paletteData = new Uint16Array(0),
-        selectedColorIndex = -1,
-        history = [],
-        historyIndex = -1,
-        romData = null;
-
-      function updateUIState(enabled) {
-        controlElements.forEach((el) => (el.disabled = !enabled));
-        updateSliderState();
-        updateRowButton();
-        updateHistoryButtons();
-      }
-
-      function updateSliderState() {
-        const enabled = paletteData.length > 0 && selectedColorIndex !== -1;
-        sliderElements.forEach((slider) => {
-          slider.disabled = !enabled;
-          slider.style.opacity = enabled ? 1 : 0.5;
-        });
-        if (!enabled) resetSliders();
-        else updateSliderValues(false);
-      }
-
-      function resetSliders() {
-        sliderElements.forEach((slider) => {
-          slider.value = 0;
-          document.getElementById(slider.id.replace('Slider', 'Value')).textContent = '0';
-        });
-        redPreview.style.backgroundColor = 'rgb(0,0,0)';
-        greenPreview.style.backgroundColor = 'rgb(0,0,0)';
-        bluePreview.style.backgroundColor = 'rgb(0,0,0)';
-      }
-
-      function updateRowButton() {
-        if (paletteData.length === 0) {
-          rowButton.textContent = '+ New Palette';
-          rowButton.onclick = addNewPalette;
-        } else if (paletteData.length === 16) {
-          rowButton.textContent = '+ Add Row';
-          rowButton.onclick = toggleRow;
-        } else {
-          rowButton.textContent = '- Remove Row';
-          rowButton.onclick = toggleRow;
+      /**
+       * Attaches all primary event listeners for the application.
+       */
+      _attachEventListeners() {
+        Object.values(this.dom.sliders).forEach(slider => slider.addEventListener('input', () => this._handleSliderInput(true)));
+        this.dom.buttons.row.addEventListener('click', () => this._handleRowButtonClick());
+        this.dom.buttons.undo.addEventListener('click', () => this._undo());
+        this.dom.buttons.redo.addEventListener('click', () => this._redo());
+        this.dom.buttons.exportPng.addEventListener('click', () => this._exportPng());
+        this.dom.buttons.exportPalette.addEventListener('click', () => this._exportPalette());
+        this.dom.fileInput.addEventListener('change', e => this._handlePaletteUpload(e));
+        this.dom.romInput.addEventListener('change', e => this._handleRomUpload(e));
+        this.dom.goButton.addEventListener('click', () => this._goToHexAddress());
+      },
+      
+      // --- STATE & HISTORY MANAGEMENT ---
+      /**
+       * Saves the current paletteData to the history stack for undo/redo.
+       */
+      _saveState() {
+        this.state.history = this.state.history.slice(0, this.state.historyIndex + 1);
+        this.state.history.push(new Uint16Array(this.state.paletteData));
+        this.state.historyIndex++;
+        this._updateHistoryButtons();
+      },
+      
+      _undo() {
+        if (this.state.historyIndex > 0) {
+          this.state.historyIndex--;
+          this.state.paletteData = new Uint16Array(this.state.history[this.state.historyIndex]);
+          this.state.selectedColorIndex = -1;
+          this._updateUI();
         }
-      }
+      },
+      
+      _redo() {
+        if (this.state.historyIndex < this.state.history.length - 1) {
+          this.state.historyIndex++;
+          this.state.paletteData = new Uint16Array(this.state.history[this.state.historyIndex]);
+          this.state.selectedColorIndex = -1;
+          this._updateUI();
+        }
+      },
 
-      function updateHistoryButtons() {
-        undoButton.disabled = historyIndex <= 0;
-        redoButton.disabled = historyIndex >= history.length - 1;
-      }
+      // --- UI UPDATE FUNCTIONS ---
+      /**
+       * Central function to refresh the entire UI based on the current state.
+       */
+      _updateUI() {
+        const hasPalette = this.state.paletteData.length > 0;
+        this.dom.buttons.exportPng.disabled = !hasPalette;
+        this.dom.buttons.exportPalette.disabled = !hasPalette;
 
-      function saveState() {
-        history = history.slice(0, historyIndex + 1);
-        history.push(new Uint16Array(paletteData));
-        historyIndex++;
-        updateHistoryButtons();
-      }
+        this._displayPalette();
+        this._updateColorEditor();
+        this._updateRowButton();
+        this._updateHistoryButtons();
+      },
 
-      // Convert 0–255 RGB values to Game Gear palette (4–bit per channel)
-      function rgbToGameGear(r, g, b) {
-        return (Math.round(b / 17) << 8) | (Math.round(g / 17) << 4) | Math.round(r / 17);
-      }
-
-      // Build the complete ROM palette list (one row per 32 bytes, each row = one palette)
-      function displayRomPalette() {
-        if (!romData) return;
-        const totalPalettes = Math.floor(romData.length / 32);
+      /**
+       * Renders the main palette editor display.
+       */
+      _displayPalette() {
         const frag = document.createDocumentFragment();
-        for (let row = 0; row < totalPalettes; row++) {
-          const rowDiv = document.createElement('div');
-          rowDiv.className = 'rom-palette-row';
-          rowDiv.dataset.rowIndex = row;
-          // Create the hex address display – show full hex address for each row
-          const addressDiv = document.createElement('div');
-          addressDiv.className = 'rom-address';
-          const address = row * 32;
-          addressDiv.textContent = '0x' + address.toString(16).padStart(6, '0');
-          rowDiv.appendChild(addressDiv);
-          // Create the palette colors display
-          const paletteDiv = document.createElement('div');
-          paletteDiv.className = 'rom-palette-colors';
-          for (let col = 0; col < 16; col++) {
-            const byteIndex = row * 32 + col * 2;
-            if (byteIndex + 1 < romData.length) {
-              const color = (romData[byteIndex + 1] << 8) | romData[byteIndex];
-              const r = (color & 15) * 17;
-              const g = ((color >> 4) & 15) * 17;
-              const b = ((color >> 8) & 15) * 17;
-              const box = document.createElement('div');
-              box.className = 'rom-color-box';
-              box.style.backgroundColor = `rgb(${r},${g},${b})`;
-              // Save the palette row so clicking any box selects the full palette
-              box.dataset.paletteRow = row;
-              box.addEventListener('click', selectRomColor);
-              paletteDiv.appendChild(box);
-            }
-          }
-          rowDiv.appendChild(paletteDiv);
-          frag.appendChild(rowDiv);
-        }
-        romPaletteDisplay.innerHTML = '';
-        romPaletteDisplay.appendChild(frag);
-      }
-
-      // When a ROM color is clicked, copy its full 16–color palette into the editor
-      function selectRomColor(e) {
-        const paletteRow = parseInt(e.target.dataset.paletteRow, 10);
-        paletteData = new Uint16Array(16);
-        for (let i = 0; i < 16; i++) {
-          const byteIndex = paletteRow * 32 + i * 2;
-          if (byteIndex + 1 < romData.length) {
-            paletteData[i] = (romData[byteIndex + 1] << 8) | romData[byteIndex];
-          }
-        }
-        selectedColorIndex = -1;
-        displayPalette();
-        updateUIState(true);
-        saveState();
-      }
-
-      function addNewPalette() {
-        paletteData = new Uint16Array(16);
-        displayPalette();
-        updateUIState(true);
-        saveState();
-      }
-
-      function toggleRow() {
-        if (paletteData.length === 16) {
-          const newRow = new Uint16Array(16);
-          paletteData = new Uint16Array([...paletteData, ...newRow]);
-        } else {
-          paletteData = new Uint16Array(paletteData.slice(0, 16));
-        }
-        displayPalette();
-        updateUIState(true);
-        saveState();
-      }
-
-      // Display the current palette (split into rows of 16 color boxes)
-      function displayPalette() {
-        const frag = document.createDocumentFragment();
-        const colorsPerRow = 16;
-        const rows = paletteData.length / colorsPerRow;
+        const rows = this.state.paletteData.length / this.COLORS_PER_ROW;
         for (let row = 0; row < rows; row++) {
           const rowDiv = document.createElement('div');
           rowDiv.className = 'palette-row';
-          for (let col = 0; col < colorsPerRow; col++) {
-            const i = row * colorsPerRow + col;
-            const c = paletteData[i];
-            const r = (c & 15) * 17,
-              g = ((c >> 4) & 15) * 17,
-              b = ((c >> 8) & 15) * 17;
+          for (let col = 0; col < this.COLORS_PER_ROW; col++) {
+            const i = row * this.COLORS_PER_ROW + col;
+            const c = this.state.paletteData[i];
+            const [r, g, b] = this._ggToRgb(c);
             const box = document.createElement('div');
-            box.className = 'color-box' + (i === selectedColorIndex ? ' selected' : '');
+            box.className = 'color-box' + (i === this.state.selectedColorIndex ? ' selected' : '');
             box.style.backgroundColor = `rgb(${r},${g},${b})`;
             box.dataset.index = i;
-            box.addEventListener('click', selectColor);
+            box.addEventListener('click', e => this._selectColor(e));
             rowDiv.appendChild(box);
           }
           frag.appendChild(rowDiv);
         }
-        paletteDisplay.innerHTML = '';
-        paletteDisplay.appendChild(frag);
-      }
+        this.dom.paletteDisplay.innerHTML = '';
+        this.dom.paletteDisplay.appendChild(frag);
+      },
 
-      // Toggle selection of a palette color in the editor
-      function selectColor(e) {
+      /**
+       * Renders the complete list of palettes found in a loaded ROM.
+       */
+      _displayRomPalette() {
+        if (!this.state.romData) return;
+        const totalPalettes = Math.floor(this.state.romData.length / this.BYTES_PER_PALETTE);
+        const frag = document.createDocumentFragment();
+        for (let row = 0; row < totalPalettes; row++) {
+            const rowDiv = document.createElement('div');
+            rowDiv.className = 'rom-palette-row';
+            rowDiv.dataset.rowIndex = row;
+            
+            const address = row * this.BYTES_PER_PALETTE;
+            const addressDiv = document.createElement('div');
+            addressDiv.className = 'rom-address';
+            addressDiv.textContent = '0x' + address.toString(16).padStart(6, '0');
+            rowDiv.appendChild(addressDiv);
+            
+            const paletteDiv = document.createElement('div');
+            paletteDiv.className = 'rom-palette-colors';
+            for (let col = 0; col < this.COLORS_PER_ROW; col++) {
+                const byteIndex = address + col * 2;
+                if (byteIndex + 1 < this.state.romData.length) {
+                    const color = (this.state.romData[byteIndex + 1] << 8) | this.state.romData[byteIndex];
+                    const [r, g, b] = this._ggToRgb(color);
+                    const box = document.createElement('div');
+                    box.className = 'rom-color-box';
+                    box.style.backgroundColor = `rgb(${r},${g},${b})`;
+                    box.dataset.paletteRow = row;
+                    box.addEventListener('click', e => this._selectRomPalette(e));
+                    paletteDiv.appendChild(box);
+                }
+            }
+            rowDiv.appendChild(paletteDiv);
+            frag.appendChild(rowDiv);
+        }
+        this.dom.romPaletteDisplay.innerHTML = '';
+        this.dom.romPaletteDisplay.appendChild(frag);
+      },
+      
+      /**
+       * Updates the color editor sliders and previews based on the selected color.
+       */
+      _updateColorEditor() {
+        const isColorSelected = this.state.selectedColorIndex !== -1 && this.state.selectedColorIndex < this.state.paletteData.length;
+        Object.values(this.dom.sliders).forEach(slider => {
+            slider.disabled = !isColorSelected;
+            slider.style.opacity = isColorSelected ? 1 : 0.5;
+        });
+
+        if (!isColorSelected) {
+            Object.values(this.dom.sliders).forEach(s => s.value = 0);
+        } else {
+            const c = this.state.paletteData[this.state.selectedColorIndex];
+            this.dom.sliders.red.value = c & 15;
+            this.dom.sliders.green.value = (c >> 4) & 15;
+            this.dom.sliders.blue.value = (c >> 8) & 15;
+        }
+        this._handleSliderInput(false);
+      },
+
+      /**
+       * Updates the text and behavior of the "+ New Palette" / "+ Add Row" button.
+       */
+      _updateRowButton() {
+        if (this.state.paletteData.length === 0) {
+          this.dom.buttons.row.textContent = '+ New Palette';
+        } else if (this.state.paletteData.length === this.COLORS_PER_ROW) {
+          this.dom.buttons.row.textContent = '+ Add Row';
+        } else {
+          this.dom.buttons.row.textContent = '- Remove Row';
+        }
+      },
+
+      _updateHistoryButtons() {
+        this.dom.buttons.undo.disabled = this.state.historyIndex <= 0;
+        this.dom.buttons.redo.disabled = this.state.historyIndex >= this.state.history.length - 1;
+      },
+
+      // --- EVENT HANDLERS ---
+      _handleSliderInput(applyUpdate = true) {
+        const r = parseInt(this.dom.sliders.red.value, 10);
+        const g = parseInt(this.dom.sliders.green.value, 10);
+        const b = parseInt(this.dom.sliders.blue.value, 10);
+        
+        this.dom.values.red.textContent = r;
+        this.dom.values.green.textContent = g;
+        this.dom.values.blue.textContent = b;
+
+        this.dom.previews.red.style.backgroundColor = `rgb(${r * this.GG_COLOR_MULTIPLIER}, 0, 0)`;
+        this.dom.previews.green.style.backgroundColor = `rgb(0, ${g * this.GG_COLOR_MULTIPLIER}, 0)`;
+        this.dom.previews.blue.style.backgroundColor = `rgb(0, 0, ${b * this.GG_COLOR_MULTIPLIER})`;
+        
+        if (applyUpdate && this.state.selectedColorIndex !== -1) {
+            this.state.paletteData[this.state.selectedColorIndex] = (b << 8) | (g << 4) | r;
+            this._displayPalette();
+            this._saveState();
+        }
+      },
+
+      _handleRowButtonClick() {
+          if (this.state.paletteData.length === 0) { // + New Palette
+              this.state.paletteData = new Uint16Array(this.COLORS_PER_ROW);
+          } else if (this.state.paletteData.length === this.COLORS_PER_ROW) { // + Add Row
+              const newRow = new Uint16Array(this.COLORS_PER_ROW);
+              this.state.paletteData = new Uint16Array([...this.state.paletteData, ...newRow]);
+          } else { // - Remove Row
+              this.state.paletteData = new Uint16Array(this.state.paletteData.slice(0, this.COLORS_PER_ROW));
+          }
+          this.state.selectedColorIndex = -1;
+          this._saveState();
+          this._updateUI();
+      },
+
+      _selectColor(e) {
         const clickedIndex = parseInt(e.target.dataset.index, 10);
-        selectedColorIndex = clickedIndex === selectedColorIndex ? -1 : clickedIndex;
-        updateColorEditor();
-        displayPalette();
-        updateSliderState();
-      }
+        this.state.selectedColorIndex = clickedIndex === this.state.selectedColorIndex ? -1 : clickedIndex;
+        this._updateUI();
+      },
+      
+      _selectRomPalette(e) {
+          const paletteRow = parseInt(e.target.dataset.paletteRow, 10);
+          const newPalette = new Uint16Array(this.COLORS_PER_ROW);
+          for (let i = 0; i < this.COLORS_PER_ROW; i++) {
+              const byteIndex = paletteRow * this.BYTES_PER_PALETTE + i * 2;
+              if (byteIndex + 1 < this.state.romData.length) {
+                  newPalette[i] = (this.state.romData[byteIndex + 1] << 8) | this.state.romData[byteIndex];
+              }
+          }
+          this.state.paletteData = newPalette;
+          this.state.selectedColorIndex = -1;
+          this._saveState();
+          this._updateUI();
+      },
 
-      function updateColorEditor() {
-        if (selectedColorIndex === -1 || selectedColorIndex >= paletteData.length) {
-          resetSliders();
+      _goToHexAddress() {
+        if (!this.state.romData) return;
+        const address = parseInt(this.dom.hexInput.value, 16);
+        if (isNaN(address) || address < 0 || address >= this.state.romData.length) {
+          alert('Invalid or out-of-bounds hex address.');
           return;
         }
-        const c = paletteData[selectedColorIndex];
-        redSlider.value = c & 15;
-        greenSlider.value = (c >> 4) & 15;
-        blueSlider.value = (c >> 8) & 15;
-        updateSliderValues(false);
-      }
-
-      function updateSliderValues(applyUpdate = true) {
-        const r = parseInt(redSlider.value, 10),
-          g = parseInt(greenSlider.value, 10),
-          b = parseInt(blueSlider.value, 10);
-        redValue.textContent = r;
-        greenValue.textContent = g;
-        blueValue.textContent = b;
-        redPreview.style.backgroundColor = `rgb(${r * 17},0,0)`;
-        greenPreview.style.backgroundColor = `rgb(0,${g * 17},0)`;
-        bluePreview.style.backgroundColor = `rgb(0,0,${b * 17})`;
-        if (applyUpdate && selectedColorIndex !== -1) updateColor();
-      }
-
-      function updateColor() {
-        if (selectedColorIndex === -1) return;
-        const r = parseInt(redSlider.value, 10),
-          g = parseInt(greenSlider.value, 10),
-          b = parseInt(blueSlider.value, 10);
-        paletteData[selectedColorIndex] = (b << 8) | (g << 4) | r;
-        displayPalette();
-        saveState();
-      }
-
-      // Attach slider event listeners
-      sliderElements.forEach((slider) => {
-        slider.addEventListener('input', () => updateSliderValues(true));
-      });
-
-      undoButton.addEventListener('click', () => {
-        if (historyIndex > 0) {
-          historyIndex--;
-          paletteData = new Uint16Array(history[historyIndex]);
-          selectedColorIndex = -1;
-          displayPalette();
-          updateUIState(true);
+        const rowIndex = Math.floor(address / this.BYTES_PER_PALETTE);
+        const targetRow = this.dom.romPaletteDisplay.querySelector(`[data-row-index="${rowIndex}"]`);
+        if (targetRow) {
+          targetRow.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
-      });
+      },
 
-      redoButton.addEventListener('click', () => {
-        if (historyIndex < history.length - 1) {
-          historyIndex++;
-          paletteData = new Uint16Array(history[historyIndex]);
-          selectedColorIndex = -1;
-          displayPalette();
-          updateUIState(true);
+      // --- FILE I/O ---
+      /**
+       * Wraps FileReader in a Promise for use with async/await.
+       * @param {File} file The file to read.
+       * @param {'readAsArrayBuffer'|'readAsDataURL'} readAs The method to read the file.
+       * @returns {Promise<string|ArrayBuffer>}
+       */
+      _readFileAs(file, readAs = 'readAsArrayBuffer') {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader[readAs](file);
+        });
+      },
+
+      async _handleRomUpload(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+            this.state.romData = new Uint8Array(await this._readFileAs(file));
+            this._displayRomPalette();
+        } catch (error) {
+            console.error('Error reading ROM file:', error);
+            alert('Could not read the ROM file.');
         }
-      });
+      },
+      
+      async _handlePaletteUpload(e) {
+        const file = e.target.files[0];
+        if (!file) return;
 
-      exportPngButton.addEventListener('click', () => {
-        const canvas = document.createElement('canvas'),
-          ctx = canvas.getContext('2d'),
-          colorsPerRow = 16,
-          rows = Math.ceil(paletteData.length / colorsPerRow);
-        canvas.width = colorsPerRow * 8;
-        canvas.height = rows * 8;
-        for (let i = 0; i < paletteData.length; i++) {
-          const color = paletteData[i],
-            r = (color & 15) * 17,
-            g = ((color >> 4) & 15) * 17,
-            b = ((color >> 8) & 15) * 17;
-          ctx.fillStyle = `rgb(${r},${g},${b})`;
-          ctx.fillRect((i % colorsPerRow) * 8, Math.floor(i / colorsPerRow) * 8, 8, 8);
+        this.state.inputFileName = file.name;
+        try {
+            if (file.type === 'image/png') {
+                await this._parsePngFile(file);
+            } else {
+                await this._parsePaletteFile(file);
+            }
+            this.state.selectedColorIndex = -1;
+            this._saveState();
+            this._updateUI();
+        } catch (error) {
+            console.error('Error processing palette file:', error);
+            alert(`Error: ${error.message}`);
         }
-        const a = document.createElement('a');
-        a.download = inputFileName.replace(/\.[^/.]+$/, '') + '.png';
-        a.href = canvas.toDataURL();
-        a.click();
-      });
+      },
 
-      exportPaletteButton.addEventListener('click', () => {
-        const blob = new Blob([paletteData.buffer], { type: 'application/octet-stream' }),
-          a = document.createElement('a');
-        a.download = inputFileName.replace(/\.[^/.]+$/, '') + '.pal';
-        a.href = URL.createObjectURL(blob);
-        a.click();
-      });
-
-      // Load a palette/PNG file
-      fileInput.addEventListener('change', (e) => {
-        const f = e.target.files[0];
-        if (f) {
-          inputFileName = f.name;
-          const reader = new FileReader();
-          if (f.type === 'image/png') {
-            reader.onload = (e) => {
-              const img = new Image();
-              img.onload = () => {
-                if (img.width !== 128 || (img.height !== 8 && img.height !== 16)) {
-                  alert('Invalid PNG size. Image should be 128x8 or 128x16.');
-                  return;
+      _parsePngFile(file) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                const isValidSize = img.width === this.COLORS_PER_ROW * this.PNG_PIXEL_SIZE && (img.height === this.PNG_PIXEL_SIZE || img.height === this.PNG_PIXEL_SIZE * 2);
+                if (!isValidSize) {
+                    return reject(new Error(`Invalid PNG dimensions. Must be ${this.COLORS_PER_ROW * this.PNG_PIXEL_SIZE}x${this.PNG_PIXEL_SIZE} or ${this.COLORS_PER_ROW * this.PNG_PIXEL_SIZE}x${this.PNG_PIXEL_SIZE*2}.`));
                 }
                 const canvas = document.createElement('canvas');
                 canvas.width = img.width;
@@ -550,86 +599,103 @@
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0);
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                paletteData = new Uint16Array(img.height === 8 ? 16 : 32);
-                for (let i = 0; i < paletteData.length; i++) {
-                  const x = (i % 16) * 8,
-                    y = Math.floor(i / 16) * 8,
-                    idx = (y * canvas.width + x) * 4;
-                  paletteData[i] = rgbToGameGear(
-                    imageData.data[idx],
-                    imageData.data[idx + 1],
-                    imageData.data[idx + 2]
-                  );
+                const numColors = img.height === this.PNG_PIXEL_SIZE ? 16 : 32;
+                this.state.paletteData = new Uint16Array(numColors);
+
+                for (let i = 0; i < numColors; i++) {
+                  const x = (i % this.COLORS_PER_ROW) * this.PNG_PIXEL_SIZE;
+                  const y = Math.floor(i / this.COLORS_PER_ROW) * this.PNG_PIXEL_SIZE;
+                  const idx = (y * canvas.width + x) * 4;
+                  this.state.paletteData[i] = this._rgbToGg(imageData.data[idx], imageData.data[idx + 1], imageData.data[idx + 2]);
                 }
-                selectedColorIndex = -1;
-                displayPalette();
-                updateUIState(true);
-                saveState();
-              };
-              img.src = e.target.result;
+                resolve();
             };
-            reader.readAsDataURL(f);
-          } else {
-            reader.onload = (e) => {
-              if (f.size === 64 || f.size === 32) {
-                paletteData = new Uint16Array(e.target.result);
-              } else {
-                const msData = new Uint8Array(e.target.result);
-                paletteData = new Uint16Array(16);
-                for (let i = 0; i < 16; i++) {
-                  const c = msData[i],
-                    r = (c & 3) * 5,
-                    g = ((c >> 2) & 3) * 5,
-                    b = ((c >> 4) & 3) * 5;
-                  paletteData[i] = (b << 8) | (g << 4) | r;
-                }
-              }
-              selectedColorIndex = -1;
-              displayPalette();
-              updateUIState(true);
-              saveState();
-            };
-            reader.readAsArrayBuffer(f);
-          }
+            img.onerror = () => reject(new Error('Could not load image.'));
+            this._readFileAs(file, 'readAsDataURL').then(dataUrl => img.src = dataUrl);
+        });
+      },
+
+      async _parsePaletteFile(file) {
+        const buffer = await this._readFileAs(file);
+        if (file.size === 32 || file.size === 64) { // Standard Game Gear .pal file
+            this.state.paletteData = new Uint16Array(buffer);
+        } else if (file.size === 16 || file.size === 32 || file.size === 48) { // Likely Master System format
+            // This is a guess for a common Master System format, adjust if needed
+            const msData = new Uint8Array(buffer);
+            this.state.paletteData = new Uint16Array(msData.length);
+            for (let i = 0; i < msData.length; i++) {
+              const c = msData[i];
+              const r = (c & 3) * 5;     // 2-bit red
+              const g = ((c >> 2) & 3) * 5; // 2-bit green
+              const b = ((c >> 4) & 3) * 5; // 2-bit blue
+              this.state.paletteData[i] = (b << 8) | (g << 4) | r;
+            }
         } else {
-          updateUIState(false);
+            throw new Error(`Unrecognized file format or size (${file.size} bytes).`);
         }
-      });
+      },
 
-      // Load a ROM file and build the full palette list
-      romInput.addEventListener('change', (e) => {
-        const f = e.target.files[0];
-        if (f) {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            romData = new Uint8Array(e.target.result);
-            displayRomPalette();
-          };
-          reader.readAsArrayBuffer(f);
-        }
-      });
+      _exportPng() {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const rows = Math.ceil(this.state.paletteData.length / this.COLORS_PER_ROW);
+        
+        canvas.width = this.COLORS_PER_ROW * this.PNG_PIXEL_SIZE;
+        canvas.height = rows * this.PNG_PIXEL_SIZE;
 
-      // "Go" button: jump to the palette row corresponding to the entered hex address.
-      goButton.addEventListener('click', () => {
-        if (!romData) return;
-        const address = parseInt(hexInput.value, 16);
-        if (isNaN(address) || address < 0 || address >= romData.length) {
-          alert('Invalid hex address');
-          return;
+        for (let i = 0; i < this.state.paletteData.length; i++) {
+          const [r, g, b] = this._ggToRgb(this.state.paletteData[i]);
+          ctx.fillStyle = `rgb(${r},${g},${b})`;
+          const x = (i % this.COLORS_PER_ROW) * this.PNG_PIXEL_SIZE;
+          const y = Math.floor(i / this.COLORS_PER_ROW) * this.PNG_PIXEL_SIZE;
+          ctx.fillRect(x, y, this.PNG_PIXEL_SIZE, this.PNG_PIXEL_SIZE);
         }
-        // Calculate the palette row index (each palette is 32 bytes)
-        const rowIndex = Math.floor(address / 32);
-        const targetRow = romPaletteDisplay.querySelector(`[data-row-index="${rowIndex}"]`);
-        if (targetRow) {
-          targetRow.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      });
+        
+        const a = document.createElement('a');
+        a.download = (this.state.inputFileName.replace(/\.[^/.]+$/, '') || 'palette') + '.png';
+        a.href = canvas.toDataURL('image/png');
+        a.click();
+      },
 
-      // Initialize UI
-      updateUIState(false);
-      resetSliders();
-      updateRowButton();
-    })();
+      _exportPalette() {
+        const blob = new Blob([this.state.paletteData.buffer], { type: 'application/octet-stream' });
+        const a = document.createElement('a');
+        a.download = (this.state.inputFileName.replace(/\.[^/.]+$/, '') || 'palette') + '.pal';
+        a.href = URL.createObjectURL(blob);
+        a.click();
+        URL.revokeObjectURL(a.href);
+      },
+      
+      // --- COLOR CONVERSION UTILITIES ---
+      /**
+       * Converts 8-bit RGB (0-255) to a 12-bit Game Gear color value.
+       * @param {number} r Red component (0-255).
+       * @param {number} g Green component (0-255).
+       * @param {number} b Blue component (0-255).
+       * @returns {number} A 16-bit integer representing the GG color (format 0x0BGR).
+       */
+      _rgbToGg(r, g, b) {
+        const r4bit = Math.round(r / this.GG_COLOR_MULTIPLIER);
+        const g4bit = Math.round(g / this.GG_COLOR_MULTIPLIER);
+        const b4bit = Math.round(b / this.GG_COLOR_MULTIPLIER);
+        return (b4bit << 8) | (g4bit << 4) | r4bit;
+      },
+      
+      /**
+       * Converts a 12-bit Game Gear color value to 8-bit RGB.
+       * @param {number} ggColor The 12-bit Game Gear color.
+       * @returns {Array<number>} An array [r, g, b] with values from 0-255.
+       */
+      _ggToRgb(ggColor) {
+        const r = (ggColor & 15) * this.GG_COLOR_MULTIPLIER;
+        const g = ((ggColor >> 4) & 15) * this.GG_COLOR_MULTIPLIER;
+        const b = ((ggColor >> 8) & 15) * this.GG_COLOR_MULTIPLIER;
+        return [r, g, b];
+      },
+    };
+
+    // Run the application
+    PaletteEditor.init();
   </script>
 </body>
 </html>
