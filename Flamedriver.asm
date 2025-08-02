@@ -2221,6 +2221,11 @@ zPlaySound_Bankswitch:
 ; New label for forced initialization.
 zPlaySound_ForceInit:
 		pop	af								; Restore original SFX ID to a
+		nop
+		nop
+		nop
+		nop
+		nop
 		jp	zPlaySound_Normal				; Go to normal sound initialization
 
 zPlaySound_NotCont:
