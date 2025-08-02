@@ -2199,12 +2199,12 @@ zPlaySound_Bankswitch:
 		cp	SndID_SpindashRev-SndID__First	; Is this the spindash sound?
 		jp	z, zPlaySound					; Branch if yes
 		cp	SndID__FirstContinuous-SndID__First	; Is this before sound 0BCh?
-		jp	c, zPlaySound_Normal			; Branch if yes
+		jp	z, zPlaySound_Normal		; Branch if yes
 		push	af							; Save af
 		ld	b, a							; b = sound index
 		ld	a, (zContinuousSFX)				; Load last continuous SFX played
 		sub	b								; Is this the same continuous sound that was playing?
-		jp	nz, zPlaySound_NotCont			; Branch if not
+		jp	nz, zPlaySound_ForceInit			; Branch if not
 		; If we got here, a is zero.
 		inc	a								; a = 1
 		ld	(zContinuousSFXFlag), a			; Flag continuous SFX as being extended
@@ -5634,3 +5634,11 @@ MusData_LBZ1:			include	"Sound/Music/LBZ1.asm"
 MusData_S3Credits:		include	"Sound/Music/Sonic 3 Credits.asm"
 MusData_2PMenu:			include	"Sound/Music/Competition Menu.asm"
 	finishBank
+
+
+; New label for forced initialization
+zPlaySound_ForceInit:
+	pop	af								; Restore original SFX ID to a
+	jp	zPlaySound_Normal				; Go to normal sound initialization
+
+
