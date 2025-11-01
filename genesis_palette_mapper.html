@@ -1,0 +1,715 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Sega Genesis Palette Mapper (512 colors)</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; padding: 18px; }
+  .row { display:flex; gap:18px; align-items:flex-start; }
+  canvas { border:1px solid #ccc; image-rendering: pixelated; }
+  .palette-grid { display:grid; grid-template-columns: repeat(32, 18px); gap:2px; }
+  .swatch { width:18px; height:18px; border:1px solid rgba(0,0,0,0.08); }
+  .colors-list { max-height: 320px; overflow:auto; width:420px; border:1px solid #eee; padding:8px; }
+  pre { background:#f8f8f8; padding:8px; overflow:auto; }
+  button {padding:8px 12px; border-radius:6px; border:1px solid #bbb; background: #fafafa; cursor:pointer;}
+</style>
+</head>
+<body>
+<h2>Sega Genesis Palette Mapper (512 colors)</h2>
+<p>Upload a sprite image — this tool will extract the colors used and map each color to the closest color from the 512-color Genesis palette embedded below.</p>
+
+<div style="margin-bottom:12px;">
+  <input id="fileInput" type="file" accept="image/*" />
+  <button id="downloadBtn" disabled>Download Remapped Image</button>
+</div>
+
+<div class="row">
+  <div>
+    <h4>Original</h4>
+    <canvas id="origCanvas"></canvas>
+  </div>
+  <div>
+    <h4>Remapped to Genesis Palette</h4>
+    <canvas id="outCanvas"></canvas>
+  </div>
+  <div style="min-width:420px;">
+    <h4>Colors found (top first)</h4>
+    <div id="colorsList" class="colors-list"></div>
+  </div>
+</div>
+
+<h4>512-color Genesis Palette</h4>
+<div id="paletteGrid" class="palette-grid"></div>
+
+<script>
+// Embedded palette (512 hex colors)
+const PALETTE = [
+  "#000000",
+  "#000048",
+  "#000090",
+  "#0000d8",
+  "#200000",
+  "#200048",
+  "#200090",
+  "#2000d8",
+  "#480000",
+  "#480048",
+  "#480090",
+  "#4800d8",
+  "#680000",
+  "#680048",
+  "#680090",
+  "#6800d8",
+  "#900000",
+  "#900048",
+  "#900090",
+  "#9000d8",
+  "#b00000",
+  "#b00048",
+  "#b00090",
+  "#b000d8",
+  "#d80000",
+  "#d80048",
+  "#d80090",
+  "#d800d8",
+  "#f80000",
+  "#f80048",
+  "#f80090",
+  "#f800d8",
+  "#002400",
+  "#002448",
+  "#002490",
+  "#0024d8",
+  "#202400",
+  "#202448",
+  "#202490",
+  "#2024d8",
+  "#482400",
+  "#482448",
+  "#482490",
+  "#4824d8",
+  "#682400",
+  "#682448",
+  "#682490",
+  "#6824d8",
+  "#902400",
+  "#902448",
+  "#902490",
+  "#9024d8",
+  "#b02400",
+  "#b02448",
+  "#b02490",
+  "#b024d8",
+  "#d82400",
+  "#d82448",
+  "#d82490",
+  "#d824d8",
+  "#f82400",
+  "#f82448",
+  "#f82490",
+  "#f824d8",
+  "#004800",
+  "#004848",
+  "#004890",
+  "#0048d8",
+  "#204800",
+  "#204848",
+  "#204890",
+  "#2048d8",
+  "#484800",
+  "#484848",
+  "#484890",
+  "#4848d8",
+  "#684800",
+  "#684848",
+  "#684890",
+  "#6848d8",
+  "#904800",
+  "#904848",
+  "#904890",
+  "#9048d8",
+  "#b04800",
+  "#b04848",
+  "#b04890",
+  "#b048d8",
+  "#d84800",
+  "#d84848",
+  "#d84890",
+  "#d848d8",
+  "#f84800",
+  "#f84848",
+  "#f84890",
+  "#f848d8",
+  "#006c00",
+  "#006c48",
+  "#006c90",
+  "#006cd8",
+  "#206c00",
+  "#206c48",
+  "#206c90",
+  "#206cd8",
+  "#486c00",
+  "#486c48",
+  "#486c90",
+  "#486cd8",
+  "#686c00",
+  "#686c48",
+  "#686c90",
+  "#686cd8",
+  "#906c00",
+  "#906c48",
+  "#906c90",
+  "#906cd8",
+  "#b06c00",
+  "#b06c48",
+  "#b06c90",
+  "#b06cd8",
+  "#d86c00",
+  "#d86c48",
+  "#d86c90",
+  "#d86cd8",
+  "#f86c00",
+  "#f86c48",
+  "#f86c90",
+  "#f86cd8",
+  "#009000",
+  "#009048",
+  "#009090",
+  "#0090d8",
+  "#209000",
+  "#209048",
+  "#209090",
+  "#2090d8",
+  "#489000",
+  "#489048",
+  "#489090",
+  "#4890d8",
+  "#689000",
+  "#689048",
+  "#689090",
+  "#6890d8",
+  "#909000",
+  "#909048",
+  "#909090",
+  "#9090d8",
+  "#b09000",
+  "#b09048",
+  "#b09090",
+  "#b090d8",
+  "#d89000",
+  "#d89048",
+  "#d89090",
+  "#d890d8",
+  "#f89000",
+  "#f89048",
+  "#f89090",
+  "#f890d8",
+  "#00b400",
+  "#00b448",
+  "#00b490",
+  "#00b4d8",
+  "#20b400",
+  "#20b448",
+  "#20b490",
+  "#20b4d8",
+  "#48b400",
+  "#48b448",
+  "#48b490",
+  "#48b4d8",
+  "#68b400",
+  "#68b448",
+  "#68b490",
+  "#68b4d8",
+  "#90b400",
+  "#90b448",
+  "#90b490",
+  "#90b4d8",
+  "#b0b400",
+  "#b0b448",
+  "#b0b490",
+  "#b0b4d8",
+  "#d8b400",
+  "#d8b448",
+  "#d8b490",
+  "#d8b4d8",
+  "#f8b400",
+  "#f8b448",
+  "#f8b490",
+  "#f8b4d8",
+  "#00d800",
+  "#00d848",
+  "#00d890",
+  "#00d8d8",
+  "#20d800",
+  "#20d848",
+  "#20d890",
+  "#20d8d8",
+  "#48d800",
+  "#48d848",
+  "#48d890",
+  "#48d8d8",
+  "#68d800",
+  "#68d848",
+  "#68d890",
+  "#68d8d8",
+  "#90d800",
+  "#90d848",
+  "#90d890",
+  "#90d8d8",
+  "#b0d800",
+  "#b0d848",
+  "#b0d890",
+  "#b0d8d8",
+  "#d8d800",
+  "#d8d848",
+  "#d8d890",
+  "#d8d8d8",
+  "#f8d800",
+  "#f8d848",
+  "#f8d890",
+  "#f8d8d8",
+  "#00fc00",
+  "#00fc48",
+  "#00fc90",
+  "#00fcd8",
+  "#20fc00",
+  "#20fc48",
+  "#20fc90",
+  "#20fcd8",
+  "#48fc00",
+  "#48fc48",
+  "#48fc90",
+  "#48fcd8",
+  "#68fc00",
+  "#68fc48",
+  "#68fc90",
+  "#68fcd8",
+  "#90fc00",
+  "#90fc48",
+  "#90fc90",
+  "#90fcd8",
+  "#b0fc00",
+  "#b0fc48",
+  "#b0fc90",
+  "#b0fcd8",
+  "#d8fc00",
+  "#d8fc48",
+  "#d8fc90",
+  "#d8fcd8",
+  "#f8fc00",
+  "#f8fc48",
+  "#f8fc90",
+  "#f8fcd8",
+  "#000020",
+  "#000068",
+  "#0000b0",
+  "#0000f8",
+  "#200020",
+  "#200068",
+  "#2000b0",
+  "#2000f8",
+  "#480020",
+  "#480068",
+  "#4800b0",
+  "#4800f8",
+  "#680020",
+  "#680068",
+  "#6800b0",
+  "#6800f8",
+  "#900020",
+  "#900068",
+  "#9000b0",
+  "#9000f8",
+  "#b00020",
+  "#b00068",
+  "#b000b0",
+  "#b000f8",
+  "#d80020",
+  "#d80068",
+  "#d800b0",
+  "#d800f8",
+  "#f80020",
+  "#f80068",
+  "#f800b0",
+  "#f800f8",
+  "#002420",
+  "#002468",
+  "#0024b0",
+  "#0024f8",
+  "#202420",
+  "#202468",
+  "#2024b0",
+  "#2024f8",
+  "#482420",
+  "#482468",
+  "#4824b0",
+  "#4824f8",
+  "#682420",
+  "#682468",
+  "#6824b0",
+  "#6824f8",
+  "#902420",
+  "#902468",
+  "#9024b0",
+  "#9024f8",
+  "#b02420",
+  "#b02468",
+  "#b024b0",
+  "#b024f8",
+  "#d82420",
+  "#d82468",
+  "#d824b0",
+  "#d824f8",
+  "#f82420",
+  "#f82468",
+  "#f824b0",
+  "#f824f8",
+  "#004820",
+  "#004868",
+  "#0048b0",
+  "#0048f8",
+  "#204820",
+  "#204868",
+  "#2048b0",
+  "#2048f8",
+  "#484820",
+  "#484868",
+  "#4848b0",
+  "#4848f8",
+  "#684820",
+  "#684868",
+  "#6848b0",
+  "#6848f8",
+  "#904820",
+  "#904868",
+  "#9048b0",
+  "#9048f8",
+  "#b04820",
+  "#b04868",
+  "#b048b0",
+  "#b048f8",
+  "#d84820",
+  "#d84868",
+  "#d848b0",
+  "#d848f8",
+  "#f84820",
+  "#f84868",
+  "#f848b0",
+  "#f848f8",
+  "#006c20",
+  "#006c68",
+  "#006cb0",
+  "#006cf8",
+  "#206c20",
+  "#206c68",
+  "#206cb0",
+  "#206cf8",
+  "#486c20",
+  "#486c68",
+  "#486cb0",
+  "#486cf8",
+  "#686c20",
+  "#686c68",
+  "#686cb0",
+  "#686cf8",
+  "#906c20",
+  "#906c68",
+  "#906cb0",
+  "#906cf8",
+  "#b06c20",
+  "#b06c68",
+  "#b06cb0",
+  "#b06cf8",
+  "#d86c20",
+  "#d86c68",
+  "#d86cb0",
+  "#d86cf8",
+  "#f86c20",
+  "#f86c68",
+  "#f86cb0",
+  "#f86cf8",
+  "#009020",
+  "#009068",
+  "#0090b0",
+  "#0090f8",
+  "#209020",
+  "#209068",
+  "#2090b0",
+  "#2090f8",
+  "#489020",
+  "#489068",
+  "#4890b0",
+  "#4890f8",
+  "#689020",
+  "#689068",
+  "#6890b0",
+  "#6890f8",
+  "#909020",
+  "#909068",
+  "#9090b0",
+  "#9090f8",
+  "#b09020",
+  "#b09068",
+  "#b090b0",
+  "#b090f8",
+  "#d89020",
+  "#d89068",
+  "#d890b0",
+  "#d890f8",
+  "#f89020",
+  "#f89068",
+  "#f890b0",
+  "#f890f8",
+  "#00b420",
+  "#00b468",
+  "#00b4b0",
+  "#00b4f8",
+  "#20b420",
+  "#20b468",
+  "#20b4b0",
+  "#20b4f8",
+  "#48b420",
+  "#48b468",
+  "#48b4b0",
+  "#48b4f8",
+  "#68b420",
+  "#68b468",
+  "#68b4b0",
+  "#68b4f8",
+  "#90b420",
+  "#90b468",
+  "#90b4b0",
+  "#90b4f8",
+  "#b0b420",
+  "#b0b468",
+  "#b0b4b0",
+  "#b0b4f8",
+  "#d8b420",
+  "#d8b468",
+  "#d8b4b0",
+  "#d8b4f8",
+  "#f8b420",
+  "#f8b468",
+  "#f8b4b0",
+  "#f8b4f8",
+  "#00d820",
+  "#00d868",
+  "#00d8b0",
+  "#00d8f8",
+  "#20d820",
+  "#20d868",
+  "#20d8b0",
+  "#20d8f8",
+  "#48d820",
+  "#48d868",
+  "#48d8b0",
+  "#48d8f8",
+  "#68d820",
+  "#68d868",
+  "#68d8b0",
+  "#68d8f8",
+  "#90d820",
+  "#90d868",
+  "#90d8b0",
+  "#90d8f8",
+  "#b0d820",
+  "#b0d868",
+  "#b0d8b0",
+  "#b0d8f8",
+  "#d8d820",
+  "#d8d868",
+  "#d8d8b0",
+  "#d8d8f8",
+  "#f8d820",
+  "#f8d868",
+  "#f8d8b0",
+  "#f8d8f8",
+  "#00fc20",
+  "#00fc68",
+  "#00fcb0",
+  "#00fcf8",
+  "#20fc20",
+  "#20fc68",
+  "#20fcb0",
+  "#20fcf8",
+  "#48fc20",
+  "#48fc68",
+  "#48fcb0",
+  "#48fcf8",
+  "#68fc20",
+  "#68fc68",
+  "#68fcb0",
+  "#68fcf8",
+  "#90fc20",
+  "#90fc68",
+  "#90fcb0",
+  "#90fcf8",
+  "#b0fc20",
+  "#b0fc68",
+  "#b0fcb0",
+  "#b0fcf8",
+  "#d8fc20",
+  "#d8fc68",
+  "#d8fcb0",
+  "#d8fcf8",
+  "#f8fc20",
+  "#f8fc68",
+  "#f8fcb0",
+  "#f8fcf8"
+];
+
+// Helpers
+function hexToRgb(hex) {
+  const m = hex.replace('#','');
+  return [parseInt(m.substring(0,2),16), parseInt(m.substring(2,4),16), parseInt(m.substring(4,6),16)];
+}
+const PALETTE_RGB = PALETTE.map(hexToRgb);
+
+// populate palette display
+const paletteGrid = document.getElementById('paletteGrid');
+PALETTE.forEach(h => {
+  const d = document.createElement('div');
+  d.className = 'swatch';
+  d.title = h;
+  d.style.background = h;
+  paletteGrid.appendChild(d);
+});
+
+function colorKey(r,g,b){
+  return '#' + [r,g,b].map(x => x.toString(16).padStart(2,'0')).join('');
+}
+
+// Nearest palette color by squared Euclidean distance in RGB
+function findNearestPaletteColor(r,g,b) {
+  let bestIdx = 0;
+  let bestDist = Infinity;
+  for (let i=0;i<PALETTE_RGB.length;i++) {
+    const p = PALETTE_RGB[i];
+    const dr = p[0]-r, dg = p[1]-g, db = p[2]-b;
+    const dist = dr*dr + dg*dg + db*db;
+    if (dist < bestDist) {
+      bestDist = dist; bestIdx = i;
+    }
+  }
+  return { hex: PALETTE[bestIdx], rgb: PALETTE_RGB[bestIdx], index: bestIdx };
+}
+
+const fileInput = document.getElementById('fileInput');
+const origCanvas = document.getElementById('origCanvas');
+const outCanvas = document.getElementById('outCanvas');
+const colorsListDiv = document.getElementById('colorsList');
+const downloadBtn = document.getElementById('downloadBtn');
+
+fileInput.addEventListener('change', async (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const img = new Image();
+  img.src = URL.createObjectURL(file);
+  await img.decode();
+
+  // Fit canvas to image (but limit display size for usability)
+  const maxDisplay = 320;
+  let displayW = img.width;
+  let displayH = img.height;
+  const scale = Math.min(1, maxDisplay / Math.max(displayW, displayH));
+  displayW = Math.round(displayW * scale);
+  displayH = Math.round(displayH * scale);
+
+  origCanvas.width = img.width;
+  origCanvas.height = img.height;
+  origCanvas.style.width = displayW + 'px';
+  origCanvas.style.height = displayH + 'px';
+
+  outCanvas.width = img.width;
+  outCanvas.height = img.height;
+  outCanvas.style.width = displayW + 'px';
+  outCanvas.style.height = displayH + 'px';
+
+  const octx = origCanvas.getContext('2d');
+  const actx = outCanvas.getContext('2d');
+  octx.clearRect(0,0,origCanvas.width, origCanvas.height);
+  octx.drawImage(img, 0, 0);
+
+  const imgData = octx.getImageData(0,0,origCanvas.width, origCanvas.height);
+  const data = imgData.data;
+
+  // Build histogram of colors (ignore fully transparent pixels)
+  const counts = new Map();
+  for (let i=0;i<data.length;i+=4) {
+    const a = data[i+3];
+    if (a === 0) continue;
+    const r = data[i], g = data[i+1], b = data[i+2];
+    const key = colorKey(r,g,b);
+    counts.set(key, (counts.get(key)||0) + 1);
+  }
+
+  // Sort colors by count descending
+  const colorsSorted = Array.from(counts.entries()).sort((a,b) => b[1]-a[1]);
+
+  // For each unique color, find nearest palette color
+  const mapping = new Map();
+  for (const [hex, cnt] of colorsSorted) {
+    const rgb = hexToRgb(hex);
+    const nearest = findNearestPaletteColor(rgb[0], rgb[1], rgb[2]);
+    mapping.set(hex, { nearestHex: nearest.hex, nearestIdx: nearest.index, count: cnt });
+  }
+
+  // Display color list (limit to top 200 for performance)
+  colorsListDiv.innerHTML = '';
+  const limitShow = 200;
+  const top = colorsSorted.slice(0, limitShow);
+  for (const [hex, cnt] of top) {
+    const mapped = mapping.get(hex);
+    const row = document.createElement('div');
+    row.style.display = 'flex';
+    row.style.alignItems = 'center';
+    row.style.gap = '8px';
+    row.style.marginBottom = '6px';
+    row.innerHTML = `
+      <div style="width:28px;height:28px;border:1px solid #ccc;background:${hex}"></div>
+      <div style="min-width:72px;font-family:monospace">${hex}</div>
+      <div style="min-width:40px">x${cnt}</div>
+      <div style="width:28px;height:28px;border:1px solid #ccc;background:${mapped.nearestHex}"></div>
+      <div style="font-family:monospace">${mapped.nearestHex}</div>
+      <div style="flex:1;text-align:right">palette idx: ${mapped.nearestIdx}</div>
+    `;
+    colorsListDiv.appendChild(row);
+  }
+  if (colorsSorted.length > limitShow) {
+    const more = document.createElement('div');
+    more.textContent = `... and ${colorsSorted.length - limitShow} more unique colors (not shown)`;
+    colorsListDiv.appendChild(more);
+  }
+
+  // Create remapped image by replacing each pixel with nearest palette color
+  const outImageData = actx.createImageData(outCanvas.width, outCanvas.height);
+  const outData = outImageData.data;
+  for (let i=0;i<data.length;i+=4) {
+    const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+    if (a === 0) {
+      outData[i] = 0; outData[i+1] = 0; outData[i+2] = 0; outData[i+3] = 0;
+      continue;
+    }
+    const key = colorKey(r,g,b);
+    const mapped = mapping.get(key);
+    const rgb = hexToRgb(mapped.nearestHex);
+    outData[i] = rgb[0];
+    outData[i+1] = rgb[1];
+    outData[i+2] = rgb[2];
+    outData[i+3] = a; // keep original alpha
+  }
+  actx.putImageData(outImageData, 0, 0);
+  downloadBtn.disabled = false;
+
+  // Download handler
+  downloadBtn.onclick = () => {
+    const link = document.createElement('a');
+    link.download = (file.name.replace(/\.[^/.]+$/, "") || 'remapped') + '_genesis.png';
+    link.href = outCanvas.toDataURL('image/png');
+    link.click();
+  };
+});
+</script>
+</body>
+</html>
