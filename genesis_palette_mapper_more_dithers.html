@@ -19,6 +19,7 @@
   .highlight { outline:2px solid #333; }
   .small { font-size:0.85rem; color:#444; }
   .control-group { display:flex; gap:8px; align-items:center; }
+  #rgbControls { gap: 12px; align-items:center; display:none; } /* hidden by default */
 </style>
 </head>
 <body>
@@ -58,8 +59,8 @@
     <input id="diverseCheck" type="checkbox" />
   </label>
 
-  <!-- NEW: RGB balance controls -->
-  <div class="control-group">
+  <!-- NEW: RGB balance controls (wrapped and hidden by default; shown only when "Prefer diverse colors" is checked) -->
+  <div id="rgbControls" class="control-group">
     <label class="small">Balance by RGB:
       <input id="rgbBalanceCheck" type="checkbox" title="Bias selection away from the dominant channel (auto) or a selected channel (manual)" />
     </label>
@@ -635,6 +636,7 @@ const ditherSelect = document.getElementById('ditherSelect');
 const limitCheck = document.getElementById('limitCheck');
 const maxColorsInput = document.getElementById('maxColorsInput');
 const diverseCheck = document.getElementById('diverseCheck');
+const rgbControlsDiv = document.getElementById('rgbControls');
 const rgbBalanceCheck = document.getElementById('rgbBalanceCheck');
 const rgbBalanceAxis = document.getElementById('rgbBalanceAxis');
 const rgbBalanceStrength = document.getElementById('rgbBalanceStrength');
@@ -1005,7 +1007,7 @@ function processCurrentImage() {
   if (limitCheck.checked) {
     const maxC = Math.max(2, Math.min(512, parseInt(maxColorsInput.value) || 32));
     const preferDiverse = !!diverseCheck.checked;
-    const rgbBalanceEnabled = !!rgbBalanceCheck.checked;
+    const rgbBalanceEnabled = !!rgbBalanceCheck.checked && preferDiverse; // only honor if diverse enabled
     const rgbMode = rgbBalanceEnabled ? (rgbBalanceAxis.value || 'auto') : 'none';
     const rgbStrength = rgbBalanceEnabled ? (parseInt(rgbBalanceStrength.value || 50)/100.0) : 0.0;
     allowedIdxs = chooseAllowedPaletteIndices(counts, maxC, preferDiverse, rgbMode, rgbStrength);
@@ -1089,8 +1091,20 @@ downloadBtn.addEventListener('click', () => {
   link.click();
 });
 
+// Show/hide + enable/disable RGB controls based on the "Prefer diverse colors" checkbox
+function updateRgbControlsVisibility() {
+  const show = !!diverseCheck.checked;
+  rgbControlsDiv.style.display = show ? 'flex' : 'none';
+  // disable controls when hidden to avoid them influencing processing accidentally
+  rgbBalanceCheck.disabled = !show;
+  rgbBalanceAxis.disabled = !show;
+  rgbBalanceStrength.disabled = !show;
+}
+
+// Add listeners to keep UI reactive; processing re-runs when relevant controls change
 [ditherSelect, limitCheck, maxColorsInput, diverseCheck, rgbBalanceCheck, rgbBalanceAxis, rgbBalanceStrength].forEach(el => {
   el.addEventListener('change', () => {
+    updateRgbControlsVisibility();
     if (!currentImage) return;
     processCurrentImage();
   });
@@ -1098,6 +1112,7 @@ downloadBtn.addEventListener('click', () => {
 
 // initialize UI defaults
 rgbBalanceAxis.value = 'auto';
+updateRgbControlsVisibility();
 
 </script>
 </body>
