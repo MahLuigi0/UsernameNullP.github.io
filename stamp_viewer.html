@@ -79,49 +79,26 @@
     return base;
   }
 
-  // parse 16-bit per color palette file (try little-endian then big-endian)
+  // parse 16-bit per color palette file (Sega Genesis format)
   function parsePaletteFile(buf){
-    const dv = new DataView(buf);
-    const entries = Math.floor(buf.byteLength / 2);
-    const want = Math.min(16, entries);
-    function decodeLE(){
-      const out=[];
-      for(let i=0;i<want;i++){
-        const v = dv.getUint16(i*2, true);
-        const r = v & 0x1F;
-        const g = (v >> 5) & 0x1F;
-        const b = (v >> 10) & 0x1F;
-        const rs = (r<<3)|(r>>2);
-        const gs = (g<<3)|(g>>2);
-        const bs = (b<<3)|(b>>2);
-        out.push([rs,gs,bs,255]);
-      }
-      return out;
+    const paletteData = new Uint8Array(buf);
+    const numColors = Math.min(16, paletteData.length / 2);
+    const out = [];
+    
+    for(let i = 0; i < numColors; i++){
+      // Read big-endian 16-bit word
+      const wordValue = (paletteData[i * 2] << 8) | paletteData[i * 2 + 1];
+      
+      // Extract 3-bit color components (even values 0-14)
+      const blue = (wordValue >> 8) & 0x0E;
+      const green = (wordValue >> 4) & 0x0E;
+      const red = wordValue & 0x0E;
+      
+      // Scale to 8-bit (multiply by 16 to get 0-224 range)
+      out.push([red * 16, green * 16, blue * 16, 255]);
     }
-    function decodeBE(){
-      const out=[];
-      for(let i=0;i<want;i++){
-        const v = dv.getUint16(i*2, false);
-        const r = v & 0x1F;
-        const g = (v >> 5) & 0x1F;
-        const b = (v >> 10) & 0x1F;
-        const rs = (r<<3)|(r>>2);
-        const gs = (g<<3)|(g>>2);
-        const bs = (b<<3)|(b>>2);
-        out.push([rs,gs,bs,255]);
-      }
-      return out;
-    }
-    const palLE = decodeLE();
-    // if palLE looks all black or transparent, attempt BE
-    const sumLE = palLE.reduce((s,c)=>s + c[0]+c[1]+c[2], 0);
-    if(sumLE === 0){
-      const palBE = decodeBE();
-      const sumBE = palBE.reduce((s,c)=>s + c[0]+c[1]+c[2], 0);
-      if(sumBE > sumLE) return palBE;
-      return palLE; // fallback
-    }
-    return palLE;
+    
+    return out;
   }
 
   paletteFileInput.addEventListener('change', async ()=>{
