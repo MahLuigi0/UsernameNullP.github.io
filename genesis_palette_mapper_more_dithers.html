@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Sega Genesis Palette Mapper — More Dithers (RGB Balance Added)</title>
+<title>Sega Genesis Palette Mapper — More Dithers (Fixed)</title>
 <style>
   body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; padding: 18px; }
   .row { display:flex; gap:18px; align-items:flex-start; }
@@ -23,8 +23,8 @@
 </style>
 </head>
 <body>
-<h2>Sega Genesis Palette Mapper — More Dithers</h2>
-<p>Upload a sprite. New dithering options added: ordered (2x2/4x4/8x8), error-diffusion variants (Floyd, Atkinson, Jarvis, Stucki, Sierra, Burkes), and random noise.</p>
+<h2>Sega Genesis Palette Mapper — More Dithers (Fixed)</h2>
+<p>Upload a sprite. Dithers included: ordered (2×2/3×3/4×4/8×8/16×16), blue-noise, threshold, random, serpentine error-diffusion, standard error-diffusion kernels, dot-diffusion (simple), Riemersma-style (Morton order) diffusion, perceptual distance mapping, channel-separated diffusion, and a multipass hybrid.</p>
 
 <div class="controls">
   <input id="fileInput" type="file" accept="image/*" />
@@ -33,18 +33,28 @@
       <option value="none">None</option>
       <optgroup label="Ordered">
         <option value="ordered_2">Ordered 2×2</option>
+        <option value="ordered_3">Ordered 3×3</option>
         <option value="ordered_4">Ordered 4×4</option>
         <option value="ordered_8">Ordered 8×8</option>
+        <option value="ordered_16">Ordered 16×16</option>
       </optgroup>
+      <option value="blue_noise">Blue-noise tile</option>
+      <option value="threshold">Threshold (luminance)</option>
+      <option value="random">Noise</option>
       <optgroup label="Error diffusion">
         <option value="floyd">Floyd–Steinberg</option>
+        <option value="serpentine_floyd">Serpentine Floyd</option>
         <option value="atkinson">Atkinson</option>
         <option value="jarvis">Jarvis–Judice–Ninke (JJN)</option>
         <option value="stucki">Stucki</option>
         <option value="sierra">Sierra</option>
         <option value="burkes">Burkes</option>
       </optgroup>
-      <option value="random">Noise</option>
+      <option value="perceptual_floyd">Perceptual (YCbCr) + Floyd</option>
+      <option value="channel_separated">Channel-separated diffusion</option>
+      <option value="dot_diffusion">Dot-diffusion (block)</option>
+      <option value="riemersma">Riemersma/Morton-order diffusion</option>
+      <option value="multipass_hybrid">Multi-pass hybrid (ordered → serpentine)</option>
     </select>
   </label>
 
@@ -107,526 +117,49 @@
 <div id="paletteGrid" class="palette-grid"></div>
 
 <script>
-// Embedded palette (512 hex colors)
-const PALETTE = [
-  "#000000",
-  "#000048",
-  "#000090",
-  "#0000d8",
-  "#200000",
-  "#200048",
-  "#200090",
-  "#2000d8",
-  "#480000",
-  "#480048",
-  "#480090",
-  "#4800d8",
-  "#680000",
-  "#680048",
-  "#680090",
-  "#6800d8",
-  "#900000",
-  "#900048",
-  "#900090",
-  "#9000d8",
-  "#b00000",
-  "#b00048",
-  "#b00090",
-  "#b000d8",
-  "#d80000",
-  "#d80048",
-  "#d80090",
-  "#d800d8",
-  "#f80000",
-  "#f80048",
-  "#f80090",
-  "#f800d8",
-  "#002400",
-  "#002448",
-  "#002490",
-  "#0024d8",
-  "#202400",
-  "#202448",
-  "#202490",
-  "#2024d8",
-  "#482400",
-  "#482448",
-  "#482490",
-  "#4824d8",
-  "#682400",
-  "#682448",
-  "#682490",
-  "#6824d8",
-  "#902400",
-  "#902448",
-  "#902490",
-  "#9024d8",
-  "#b02400",
-  "#b02448",
-  "#b02490",
-  "#b024d8",
-  "#d82400",
-  "#d82448",
-  "#d82490",
-  "#d824d8",
-  "#f82400",
-  "#f82448",
-  "#f82490",
-  "#f824d8",
-  "#004800",
-  "#004848",
-  "#004890",
-  "#0048d8",
-  "#204800",
-  "#204848",
-  "#204890",
-  "#2048d8",
-  "#484800",
-  "#484848",
-  "#484890",
-  "#4848d8",
-  "#684800",
-  "#684848",
-  "#684890",
-  "#6848d8",
-  "#904800",
-  "#904848",
-  "#904890",
-  "#9048d8",
-  "#b04800",
-  "#b04848",
-  "#b04890",
-  "#b048d8",
-  "#d84800",
-  "#d84848",
-  "#d84890",
-  "#d848d8",
-  "#f84800",
-  "#f84848",
-  "#f84890",
-  "#f848d8",
-  "#006c00",
-  "#006c48",
-  "#006c90",
-  "#006cd8",
-  "#206c00",
-  "#206c48",
-  "#206c90",
-  "#206cd8",
-  "#486c00",
-  "#486c48",
-  "#486c90",
-  "#486cd8",
-  "#686c00",
-  "#686c48",
-  "#686c90",
-  "#686cd8",
-  "#906c00",
-  "#906c48",
-  "#906c90",
-  "#906cd8",
-  "#b06c00",
-  "#b06c48",
-  "#b06c90",
-  "#b06cd8",
-  "#d86c00",
-  "#d86c48",
-  "#d86c90",
-  "#d86cd8",
-  "#f86c00",
-  "#f86c48",
-  "#f86c90",
-  "#f86cd8",
-  "#009000",
-  "#009048",
-  "#009090",
-  "#0090d8",
-  "#209000",
-  "#209048",
-  "#209090",
-  "#2090d8",
-  "#489000",
-  "#489048",
-  "#489090",
-  "#4890d8",
-  "#689000",
-  "#689048",
-  "#689090",
-  "#6890d8",
-  "#909000",
-  "#909048",
-  "#909090",
-  "#9090d8",
-  "#b09000",
-  "#b09048",
-  "#b09090",
-  "#b090d8",
-  "#d89000",
-  "#d89048",
-  "#d89090",
-  "#d890d8",
-  "#f89000",
-  "#f89048",
-  "#f89090",
-  "#f890d8",
-  "#00b400",
-  "#00b448",
-  "#00b490",
-  "#00b4d8",
-  "#20b400",
-  "#20b448",
-  "#20b490",
-  "#20b4d8",
-  "#48b400",
-  "#48b448",
-  "#48b490",
-  "#48b4d8",
-  "#68b400",
-  "#68b448",
-  "#68b490",
-  "#68b4d8",
-  "#90b400",
-  "#90b448",
-  "#90b490",
-  "#90b4d8",
-  "#b0b400",
-  "#b0b448",
-  "#b0b490",
-  "#b0b4d8",
-  "#d8b400",
-  "#d8b448",
-  "#d8b490",
-  "#d8b4d8",
-  "#f8b400",
-  "#f8b448",
-  "#f8b490",
-  "#f8b4d8",
-  "#00d800",
-  "#00d848",
-  "#00d890",
-  "#00d8d8",
-  "#20d800",
-  "#20d848",
-  "#20d890",
-  "#20d8d8",
-  "#48d800",
-  "#48d848",
-  "#48d890",
-  "#48d8d8",
-  "#68d800",
-  "#68d848",
-  "#68d890",
-  "#68d8d8",
-  "#90d800",
-  "#90d848",
-  "#90d890",
-  "#90d8d8",
-  "#b0d800",
-  "#b0d848",
-  "#b0d890",
-  "#b0d8d8",
-  "#d8d800",
-  "#d8d848",
-  "#d8d890",
-  "#d8d8d8",
-  "#f8d800",
-  "#f8d848",
-  "#f8d890",
-  "#f8d8d8",
-  "#00fc00",
-  "#00fc48",
-  "#00fc90",
-  "#00fcd8",
-  "#20fc00",
-  "#20fc48",
-  "#20fc90",
-  "#20fcd8",
-  "#48fc00",
-  "#48fc48",
-  "#48fc90",
-  "#48fcd8",
-  "#68fc00",
-  "#68fc48",
-  "#68fc90",
-  "#68fcd8",
-  "#90fc00",
-  "#90fc48",
-  "#90fc90",
-  "#90fcd8",
-  "#b0fc00",
-  "#b0fc48",
-  "#b0fc90",
-  "#b0fcd8",
-  "#d8fc00",
-  "#d8fc48",
-  "#d8fc90",
-  "#d8fcd8",
-  "#f8fc00",
-  "#f8fc48",
-  "#f8fc90",
-  "#f8fcd8",
-  "#000020",
-  "#000068",
-  "#0000b0",
-  "#0000f8",
-  "#200020",
-  "#200068",
-  "#2000b0",
-  "#2000f8",
-  "#480020",
-  "#480068",
-  "#4800b0",
-  "#4800f8",
-  "#680020",
-  "#680068",
-  "#6800b0",
-  "#6800f8",
-  "#900020",
-  "#900068",
-  "#9000b0",
-  "#9000f8",
-  "#b00020",
-  "#b00068",
-  "#b000b0",
-  "#b000f8",
-  "#d80020",
-  "#d80068",
-  "#d800b0",
-  "#d800f8",
-  "#f80020",
-  "#f80068",
-  "#f800b0",
-  "#f800f8",
-  "#002420",
-  "#002468",
-  "#0024b0",
-  "#0024f8",
-  "#202420",
-  "#202468",
-  "#2024b0",
-  "#2024f8",
-  "#482420",
-  "#482468",
-  "#4824b0",
-  "#4824f8",
-  "#682420",
-  "#682468",
-  "#6824b0",
-  "#6824f8",
-  "#902420",
-  "#902468",
-  "#9024b0",
-  "#9024f8",
-  "#b02420",
-  "#b02468",
-  "#b024b0",
-  "#b024f8",
-  "#d82420",
-  "#d82468",
-  "#d824b0",
-  "#d824f8",
-  "#f82420",
-  "#f82468",
-  "#f824b0",
-  "#f824f8",
-  "#004820",
-  "#004868",
-  "#0048b0",
-  "#0048f8",
-  "#204820",
-  "#204868",
-  "#2048b0",
-  "#2048f8",
-  "#484820",
-  "#484868",
-  "#4848b0",
-  "#4848f8",
-  "#684820",
-  "#684868",
-  "#6848b0",
-  "#6848f8",
-  "#904820",
-  "#904868",
-  "#9048b0",
-  "#9048f8",
-  "#b04820",
-  "#b04868",
-  "#b048b0",
-  "#b048f8",
-  "#d84820",
-  "#d84868",
-  "#d848b0",
-  "#d848f8",
-  "#f84820",
-  "#f84868",
-  "#f848b0",
-  "#f848f8",
-  "#006c20",
-  "#006c68",
-  "#006cb0",
-  "#006cf8",
-  "#206c20",
-  "#206c68",
-  "#206cb0",
-  "#206cf8",
-  "#486c20",
-  "#486c68",
-  "#486cb0",
-  "#486cf8",
-  "#686c20",
-  "#686c68",
-  "#686cb0",
-  "#686cf8",
-  "#906c20",
-  "#906c68",
-  "#906cb0",
-  "#906cf8",
-  "#b06c20",
-  "#b06c68",
-  "#b06cb0",
-  "#b06cf8",
-  "#d86c20",
-  "#d86c68",
-  "#d86cb0",
-  "#d86cf8",
-  "#f86c20",
-  "#f86c68",
-  "#f86cb0",
-  "#f86cf8",
-  "#009020",
-  "#009068",
-  "#0090b0",
-  "#0090f8",
-  "#209020",
-  "#209068",
-  "#2090b0",
-  "#2090f8",
-  "#489020",
-  "#489068",
-  "#4890b0",
-  "#4890f8",
-  "#689020",
-  "#689068",
-  "#6890b0",
-  "#6890f8",
-  "#909020",
-  "#909068",
-  "#9090b0",
-  "#9090f8",
-  "#b09020",
-  "#b09068",
-  "#b090b0",
-  "#b090f8",
-  "#d89020",
-  "#d89068",
-  "#d890b0",
-  "#d890f8",
-  "#f89020",
-  "#f89068",
-  "#f890b0",
-  "#f890f8",
-  "#00b420",
-  "#00b468",
-  "#00b4b0",
-  "#00b4f8",
-  "#20b420",
-  "#20b468",
-  "#20b4b0",
-  "#20b4f8",
-  "#48b420",
-  "#48b468",
-  "#48b4b0",
-  "#48b4f8",
-  "#68b420",
-  "#68b468",
-  "#68b4b0",
-  "#68b4f8",
-  "#90b420",
-  "#90b468",
-  "#90b4b0",
-  "#90b4f8",
-  "#b0b420",
-  "#b0b468",
-  "#b0b4b0",
-  "#b0b4f8",
-  "#d8b420",
-  "#d8b468",
-  "#d8b4b0",
-  "#d8b4f8",
-  "#f8b420",
-  "#f8b468",
-  "#f8b4b0",
-  "#f8b4f8",
-  "#00d820",
-  "#00d868",
-  "#00d8b0",
-  "#00d8f8",
-  "#20d820",
-  "#20d868",
-  "#20d8b0",
-  "#20d8f8",
-  "#48d820",
-  "#48d868",
-  "#48d8b0",
-  "#48d8f8",
-  "#68d820",
-  "#68d868",
-  "#68d8b0",
-  "#68d8f8",
-  "#90d820",
-  "#90d868",
-  "#90d8b0",
-  "#90d8f8",
-  "#b0d820",
-  "#b0d868",
-  "#b0d8b0",
-  "#b0d8f8",
-  "#d8d820",
-  "#d8d868",
-  "#d8d8b0",
-  "#d8d8f8",
-  "#f8d820",
-  "#f8d868",
-  "#f8d8b0",
-  "#f8d8f8",
-  "#00fc20",
-  "#00fc68",
-  "#00fcb0",
-  "#00fcf8",
-  "#20fc20",
-  "#20fc68",
-  "#20fcb0",
-  "#20fcf8",
-  "#48fc20",
-  "#48fc68",
-  "#48fcb0",
-  "#48fcf8",
-  "#68fc20",
-  "#68fc68",
-  "#68fcb0",
-  "#68fcf8",
-  "#90fc20",
-  "#90fc68",
-  "#90fcb0",
-  "#90fcf8",
-  "#b0fc20",
-  "#b0fc68",
-  "#b0fcb0",
-  "#b0fcf8",
-  "#d8fc20",
-  "#d8fc68",
-  "#d8fcb0",
-  "#d8fcf8",
-  "#f8fc20",
-  "#f8fc68",
-  "#f8fcb0",
-  "#f8fcf8"
-];
-
+// --- Helper: convert hex to [r,g,b]
 function hexToRgb(hex) {
   const m = hex.replace('#','');
   return [parseInt(m.substring(0,2),16), parseInt(m.substring(2,4),16), parseInt(m.substring(4,6),16)];
 }
+
+// Full Genesis palette (512 entries)
+const ORIGINAL_PALETTE = [
+  "#000000","#000048","#000090","#0000d8","#200000","#200048","#200090","#2000d8","#480000","#480048","#480090","#4800d8","#680000","#680048","#680090","#6800d8",
+  "#900000","#900048","#900090","#9000d8","#b00000","#b00048","#b00090","#b000d8","#d80000","#d80048","#d80090","#d800d8","#f80000","#f80048","#f80090","#f800d8",
+  "#002400","#002448","#002490","#0024d8","#202400","#202448","#202490","#2024d8","#482400","#482448","#482490","#4824d8","#682400","#682448","#682490","#6824d8",
+  "#902400","#902448","#902490","#9024d8","#b02400","#b02448","#b02490","#b024d8","#d82400","#d82448","#d82490","#d824d8","#f82400","#f82448","#f82490","#f824d8",
+  "#004800","#004848","#004890","#0048d8","#204800","#204848","#204890","#2048d8","#484800","#484848","#484890","#4848d8","#684800","#684848","#684890","#6848d8",
+  "#904800","#904848","#904890","#9048d8","#b04800","#b04848","#b04890","#b048d8","#d84800","#d84848","#d84890","#d848d8","#f84800","#f84848","#f84890","#f848d8",
+  "#006c00","#006c48","#006c90","#006cd8","#206c00","#206c48","#206c90","#206cd8","#486c00","#486c48","#486c90","#486cd8","#686c00","#686c48","#686c90","#686cd8",
+  "#906c00","#906c48","#906c90","#906cd8","#b06c00","#b06c48","#b06c90","#b06cd8","#d86c00","#d86c48","#d86c90","#d86cd8","#f86c00","#f86c48","#f86c90","#f86cd8",
+  "#009000","#009048","#009090","#0090d8","#209000","#209048","#209090","#2090d8","#489000","#489048","#489090","#4890d8","#689000","#689048","#689090","#6890d8",
+  "#909000","#909048","#909090","#9090d8","#b09000","#b09048","#b09090","#b090d8","#d89000","#d89048","#d89090","#d890d8","#f89000","#f89048","#f89090","#f890d8",
+  "#00b400","#00b448","#00b490","#00b4d8","#20b400","#20b448","#20b490","#20b4d8","#48b400","#48b448","#48b490","#48b4d8","#68b400","#68b448","#68b490","#68b4d8",
+  "#90b400","#90b448","#90b490","#90b4d8","#b0b400","#b0b448","#b0b490","#b0b4d8","#d8b400","#d8b448","#d8b490","#d8b4d8","#f8b400","#f8b448","#f8b490","#f8b4d8",
+  "#00d800","#00d848","#00d890","#00d8d8","#20d800","#20d848","#20d890","#20d8d8","#48d800","#48d848","#48d890","#48d8d8","#68d800","#68d848","#68d890","#68d8d8",
+  "#90d800","#90d848","#90d890","#90d8d8","#b0d800","#b0d848","#b0d890","#b0d8d8","#d8d800","#d8d848","#d8d890","#d8d8d8","#f8d800","#f8d848","#f8d890","#f8d8d8",
+  "#00fc00","#00fc48","#00fc90","#00fcd8","#20fc00","#20fc48","#20fc90","#20fcd8","#48fc00","#48fc48","#48fc90","#48fcd8","#68fc00","#68fc48","#68fc90","#68fcd8",
+  "#90fc00","#90fc48","#90fc90","#90fcd8","#b0fc00","#b0fc48","#b0fc90","#b0fcd8","#d8fc00","#d8fc48","#d8fc90","#d8fcd8","#f8fc00","#f8fc48","#f8fc90","#f8fcd8",
+  "#000020","#000068","#0000b0","#0000f8","#200020","#200068","#2000b0","#2000f8","#480020","#480068","#4800b0","#4800f8","#680020","#680068","#6800b0","#6800f8",
+  "#900020","#900068","#9000b0","#9000f8","#b00020","#b00068","#b000b0","#b000f8","#d80020","#d80068","#d800b0","#d800f8","#f80020","#f80068","#f800b0","#f800f8",
+  "#002420","#002468","#0024b0","#0024f8","#202420","#202468","#2024b0","#2024f8","#482420","#482468","#4824b0","#4824f8","#682420","#682468","#6824b0","#6824f8",
+  "#902420","#902468","#9024b0","#9024f8","#b02420","#b02468","#b024b0","#b024f8","#d82420","#d82468","#d824b0","#d824f8","#f82420","#f82468","#f824b0","#f824f8",
+  "#004820","#004868","#0048b0","#0048f8","#204820","#204868","#2048b0","#2048f8","#484820","#484868","#4848b0","#4848f8","#684820","#684868","#6848b0","#6848f8",
+  "#904820","#904868","#9048b0","#9048f8","#b04820","#b04868","#b048b0","#b048f8","#d84820","#d84868","#d848b0","#d848f8","#f84820","#f84868","#f848b0","#f848f8",
+  "#006c20","#006c68","#006cb0","#006cf8","#206c20","#206c68","#206cb0","#206cf8","#486c20","#486c68","#486cb0","#486cf8","#686c20","#686c68","#686cb0","#686cf8",
+  "#906c20","#906c68","#906cb0","#906cf8","#b06c20","#b06c68","#b06cb0","#b06cf8","#d86c20","#d86c68","#d86cb0","#d86cf8","#f86c20","#f86c68","#f86cb0","#f86cf8",
+  "#009020","#009068","#0090b0","#0090f8","#209020","#209068","#2090b0","#2090f8","#489020","#489068","#4890b0","#4890f8","#689020","#689068","#6890b0","#6890f8",
+  "#909020","#909068","#9090b0","#9090f8","#b09020","#b09068","#b090b0","#b090f8","#d89020","#d89068","#d890b0","#d890f8","#f89020","#f89068","#f890b0","#f890f8",
+  "#00b420","#00b468","#00b4b0","#00b4f8","#20b420","#20b468","#20b4b0","#20b4f8","#48b420","#48b468","#48b4b0","#48b4f8","#68b420","#68b468","#68b4b0","#68b4f8",
+  "#90b420","#90b468","#90b4b0","#90b4f8","#b0b420","#b0b468","#b0b4b0","#b0b4f8","#d8b420","#d8b468","#d8b4b0","#d8b4f8","#f8b420","#f8b468","#f8b4b0","#f8b4f8",
+  "#00d820","#00d868","#00d8b0","#00d8f8","#20d820","#20d868","#20d8b0","#20d8f8","#48d820","#48d868","#48d8b0","#48d8f8","#68d820","#68d868","#68d8b0","#68d8f8",
+  "#90d820","#90d868","#90d8b0","#90d8f8","#b0d820","#b0d868","#b0d8b0","#b0d8f8","#d8d820","#d8d868","#d8d8b0","#d8d8f8","#f8d820","#f8d868","#f8d8b0","#f8d8f8",
+  "#00fc20","#00fc68","#00fcb0","#00fcf8","#20fc20","#20fc68","#20fcb0","#20fcf8","#48fc20","#48fc68","#48fcb0","#48fcf8","#68fc20","#68fc68","#68fcb0","#68fcf8",
+  "#90fc20","#90fc68","#90fcb0","#90fcf8","#b0fc20","#b0fc68","#b0fcb0","#b0fcf8","#d8fc20","#d8fc68","#d8fcb0","#d8fcf8","#f8fc20","#f8fc68","#f8fcb0","#f8fcf8"
+];
+
+const PALETTE = ORIGINAL_PALETTE.slice();
 const PALETTE_RGB = PALETTE.map(hexToRgb);
 
 const fileInput = document.getElementById('fileInput');
@@ -678,6 +211,27 @@ function findNearestInList(r,g,b, listRGB) {
   return bestIdx;
 }
 
+// Perceptual nearest (YCbCr distance)
+function rgbToYCbCr(r,g,b) {
+  // ITU-R BT.601
+  const y  =  0.299*r + 0.587*g + 0.114*b;
+  const cb = -0.168736*r -0.331264*g + 0.5*b + 128;
+  const cr =  0.5*r -0.418688*g -0.081312*b + 128;
+  return [y, cb, cr];
+}
+function findNearestInListYCbCr(r,g,b, listRGB) {
+  const a = rgbToYCbCr(r,g,b);
+  let bestIdx = 0, bestDist = Infinity;
+  for (let i=0;i<listRGB.length;i++) {
+    const p = listRGB[i];
+    const bval = rgbToYCbCr(p[0],p[1],p[2]);
+    const dy = a[0]-bval[0], dcb = a[1]-bval[1], dcr = a[2]-bval[2];
+    const dist = dy*dy + dcb*dcb + dcr*dcr;
+    if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+  }
+  return bestIdx;
+}
+
 function buildHistogram(imgData) {
   const data = imgData.data;
   const counts = new Map();
@@ -691,8 +245,7 @@ function buildHistogram(imgData) {
   return counts;
 }
 
-// Choose allowed palette indices (diversity option included)
-// NEW: rgbBalanceMode: 'none'|'auto'|'red'|'green'|'blue' ; rgbBalanceStrength: 0..1
+// chooseAllowedPaletteIndices: same as previous implementation but using PALETTE and PALETTE_RGB variables above
 function chooseAllowedPaletteIndices(countsMap, maxAllowed, preferDiverse, rgbBalanceMode='none', rgbBalanceStrength=0.5) {
   const freqPerPaletteIdx = new Map();
   for (const [hex, cnt] of countsMap.entries()) {
@@ -764,7 +317,7 @@ function chooseAllowedPaletteIndices(countsMap, maxAllowed, preferDiverse, rgbBa
 
   const chosen = [];
   candidates.sort((a,b)=> (freqArr[b] - freqArr[a]));
-  chosen.push(candidates[0]);
+  chosen.push(candidates[0] || 0);
 
   while (chosen.length < maxAllowed) {
     let bestIdx = null;
@@ -785,8 +338,6 @@ function chooseAllowedPaletteIndices(countsMap, maxAllowed, preferDiverse, rgbBa
       if (balanceChannel !== null && strength > 0) {
         const channelValue = PALETTE_RGB[idx][balanceChannel] / 255; // 0..1
         const balanceScore = 1 - channelValue; // higher when palette color has less of the dominant channel
-        // center around 0: (balanceScore - 0.5) in [-0.5,0.5]
-        // combine with strength but damp so doesn't fully override other heuristics
         baseScore = baseScore + (strength * 0.8) * (balanceScore - 0.5);
       }
 
@@ -812,6 +363,7 @@ function chooseAllowedPaletteIndices(countsMap, maxAllowed, preferDiverse, rgbBa
 
 // Ordered dither matrices
 const bayer2 = [[0,2],[3,1]];
+const bayer3 = [[0,7,3],[6,5,1],[4,2,8]];
 const bayer4 = [[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
 const bayer8 = [
   [0,32,8,40,2,34,10,42],
@@ -821,15 +373,39 @@ const bayer8 = [
   [3,35,11,43,1,33,9,41],
   [51,19,59,27,49,17,57,25],
   [15,47,7,39,13,45,5,37],
-  [61,29,55,23,61,29,53,21] // small tweak; consistent matrix
+  [61,29,55,23,61,29,53,21]
+];
+const bayer16 = (function(){
+  const m = [];
+  for (let y=0;y<16;y++){
+    const row = [];
+    for (let x=0;x<16;x++){
+      row.push((bayer8[y%8][x%8]*4 + Math.floor((y/8))*2 + Math.floor((x/8)))%256);
+    }
+    m.push(row);
+  }
+  return m;
+})();
+
+// Small blue-noise 8×8 tile (precomputed-ish). Values 0..63
+const blueNoise8 = [
+  [ 36,  4, 44, 28,  2, 46, 30, 14],
+  [ 16, 52,  8, 40, 48, 10, 38, 22],
+  [ 56, 24, 60, 32, 20, 54, 34, 12],
+  [ 40,  6, 42, 18,  0, 50, 26,  8],
+  [  1, 33, 13, 45, 11, 35, 25, 57],
+  [ 17, 49, 19, 51, 15, 47, 27, 59],
+  [  5, 37, 21, 53,  7, 39, 23, 55],
+  [ 29, 61, 41, 63, 31, 62, 43, 58]
 ];
 
-function applyOrdered(imgData, allowedIdxs, matrix) {
+// applyOrdered generalized
+function applyOrdered(imgData, allowedIdxs, matrix, strength=16) {
   const width = imgData.width, height = imgData.height;
   const data = imgData.data;
   const allowedRGB = allowedIdxs.map(i=>PALETTE_RGB[i]);
   const n = matrix.length;
-  const denom = n*n;
+  const denom = Math.max(1, n*n);
   for (let y=0;y<height;y++) {
     for (let x=0;x<width;x++) {
       const i = (y*width + x)*4;
@@ -837,9 +413,9 @@ function applyOrdered(imgData, allowedIdxs, matrix) {
       if (a === 0) continue;
       const thresh = (matrix[y % n][x % n] + 0.5)/denom - 0.5;
       let r = data[i], g = data[i+1], b = data[i+2];
-      r = Math.max(0, Math.min(255, Math.round(r + thresh*16)));
-      g = Math.max(0, Math.min(255, Math.round(g + thresh*16)));
-      b = Math.max(0, Math.min(255, Math.round(b + thresh*16)));
+      r = Math.max(0, Math.min(255, Math.round(r + thresh*strength)));
+      g = Math.max(0, Math.min(255, Math.round(g + thresh*strength)));
+      b = Math.max(0, Math.min(255, Math.round(b + thresh*strength)));
       const idx = findNearestInList(r,g,b, allowedRGB);
       const pal = allowedRGB[idx];
       data[i] = pal[0]; data[i+1] = pal[1]; data[i+2] = pal[2];
@@ -848,7 +424,25 @@ function applyOrdered(imgData, allowedIdxs, matrix) {
   return imgData;
 }
 
-// General error-diffusion with kernel
+// threshold dither
+function applyThreshold(imgData, allowedIdxs, threshold=128) {
+  const data = imgData.data;
+  const allowedRGB = allowedIdxs.map(i=>PALETTE_RGB[i]);
+  for (let i=0;i<data.length;i+=4) {
+    const a = data[i+3];
+    if (a === 0) continue;
+    const lum = 0.2126*data[i] + 0.7152*data[i+1] + 0.0722*data[i+2];
+    const r = lum >= threshold ? data[i] : Math.max(0, data[i]-80);
+    const g = lum >= threshold ? data[i+1] : Math.max(0, data[i+1]-80);
+    const b = lum >= threshold ? data[i+2] : Math.max(0, data[i+2]-80);
+    const idx = findNearestInList(r,g,b, allowedRGB);
+    const pal = allowedRGB[idx];
+    data[i]=pal[0]; data[i+1]=pal[1]; data[i+2]=pal[2];
+  }
+  return imgData;
+}
+
+// General error-diffusion (non-serpentine)
 function applyErrorDiffusion(imgData, allowedIdxs, kernel) {
   const width = imgData.width, height = imgData.height;
   const data = imgData.data;
@@ -883,37 +477,269 @@ function applyErrorDiffusion(imgData, allowedIdxs, kernel) {
   return imgData;
 }
 
-// Define kernels (weights sum to 1 in distribution)
-const KERNELS = {
-  'floyd': [
-    {x:1,y:0,w:7/16}, {x:-1,y:1,w:3/16}, {x:0,y:1,w:5/16}, {x:1,y:1,w:1/16}
-  ],
-  'burkes': [
-    {x:1,y:0,w:8/32}, {x:2,y:0,w:4/32},
-    {x:-2,y:1,w:2/32}, {x:-1,y:1,w:4/32}, {x:0,y:1,w:8/32}, {x:1,y:1,w:4/32}, {x:2,y:1,w:2/32}
-  ],
-  'jarvis': [
-    {x:1,y:0,w:7/48}, {x:2,y:0,w:5/48},
-    {x:-2,y:1,w:3/48},{x:-1,y:1,w:5/48},{x:0,y:1,w:7/48},{x:1,y:1,w:5/48},{x:2,y:1,w:3/48},
-    {x:-2,y:2,w:1/48},{x:-1,y:2,w:3/48},{x:0,y:2,w:5/48},{x:1,y:2,w:3/48},{x:2,y:2,w:1/48}
-  ],
-  'sierra': [
-    {x:1,y:0,w:5/32}, {x:2,y:0,w:3/32},
-    {x:-2,y:1,w:2/32},{x:-1,y:1,w:4/32},{x:0,y:1,w:5/32},{x:1,y:1,w:4/32},{x:2,y:1,w:2/32},
-    {x:-1,y:2,w:2/32},{x:0,y:2,w:3/32},{x:1,y:2,w:2/32}
-  ],
-  'stucki': [
-    {x:1,y:0,w:8/42},{x:2,y:0,w:4/42},
-    {x:-2,y:1,w:2/42},{x:-1,y:1,w:4/42},{x:0,y:1,w:8/42},{x:1,y:1,w:4/42},{x:2,y:1,w:2/42},
-    {x:-2,y:2,w:1/42},{x:-1,y:2,w:2/42},{x:0,y:2,w:4/42},{x:1,y:2,w:2/42},{x:2,y:2,w:1/42}
-  ],
-  'atkinson': [
-    {x:1,y:0,w:1/8},{x:2,y:0,w:1/8},
-    {x:-1,y:1,w:1/8},{x:0,y:1,w:1/8},{x:1,y:1,w:1/8},
-    {x:0,y:2,w:1/8}
-  ]
-};
+// Serpentine error diffusion (mirrors kernel on odd rows)
+function applyErrorDiffusionSerpentine(imgData, allowedIdxs, kernel) {
+  const width = imgData.width, height = imgData.height;
+  const data = imgData.data;
+  const allowedRGB = allowedIdxs.map(i=>PALETTE_RGB[i]);
+  const buf = new Float32Array(data.length);
+  for (let i=0;i<data.length;i++) buf[i] = data[i];
 
+  for (let y=0; y<height; y++) {
+    const leftToRight = (y % 2 === 0);
+    if (leftToRight) {
+      for (let x=0; x<width; x++) {
+        const idx = (y*width + x)*4;
+        const a = buf[idx+3];
+        if (a === 0) continue;
+        const oldR = buf[idx], oldG = buf[idx+1], oldB = buf[idx+2];
+        const nearestIdx = findNearestInList(oldR, oldG, oldB, allowedRGB);
+        const pal = allowedRGB[nearestIdx];
+        buf[idx] = pal[0]; buf[idx+1] = pal[1]; buf[idx+2] = pal[2];
+        const errR = oldR - pal[0], errG = oldG - pal[1], errB = oldB - pal[2];
+        for (const k of kernel) {
+          const nx = x + k.x, ny = y + k.y;
+          if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+          const nidx = (ny*width + nx)*4;
+          buf[nidx]   = buf[nidx]   + errR * k.w;
+          buf[nidx+1] = buf[nidx+1] + errG * k.w;
+          buf[nidx+2] = buf[nidx+2] + errB * k.w;
+        }
+      }
+    } else {
+      for (let x=width-1; x>=0; x--) {
+        const idx = (y*width + x)*4;
+        const a = buf[idx+3];
+        if (a === 0) continue;
+        const oldR = buf[idx], oldG = buf[idx+1], oldB = buf[idx+2];
+        const nearestIdx = findNearestInList(oldR, oldG, oldB, allowedRGB);
+        const pal = allowedRGB[nearestIdx];
+        buf[idx] = pal[0]; buf[idx+1] = pal[1]; buf[idx+2] = pal[2];
+        const errR = oldR - pal[0], errG = oldG - pal[1], errB = oldB - pal[2];
+        for (const k of kernel) {
+          const nx = x - k.x, ny = y + k.y; // mirror x offset
+          if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+          const nidx = (ny*width + nx)*4;
+          buf[nidx]   = buf[nidx]   + errR * k.w;
+          buf[nidx+1] = buf[nidx+1] + errG * k.w;
+          buf[nidx+2] = buf[nidx+2] + errB * k.w;
+        }
+      }
+    }
+  }
+
+  for (let i=0;i<data.length;i++) {
+    if (i%4===3) data[i] = buf[i]; else data[i] = Math.max(0, Math.min(255, Math.round(buf[i])));
+  }
+  return imgData;
+}
+
+// Dot-diffusion (simple block-based approach)
+function applyDotDiffusion(imgData, allowedIdxs, blockSize=8) {
+  const width = imgData.width, height = imgData.height;
+  const data = imgData.data;
+  const allowedRGB = allowedIdxs.map(i=>PALETTE_RGB[i]);
+  const buf = new Float32Array(data.length);
+  for (let i=0;i<data.length;i++) buf[i] = data[i];
+
+  for (let by=0; by<height; by+=blockSize) {
+    for (let bx=0; bx<width; bx+=blockSize) {
+      // process block left-to-right, top-to-bottom but confine error within block
+      for (let y=by; y<Math.min(by+blockSize, height); y++) {
+        for (let x=bx; x<Math.min(bx+blockSize, width); x++) {
+          const idx = (y*width + x)*4;
+          const a = buf[idx+3];
+          if (a === 0) continue;
+          const oldR = buf[idx], oldG = buf[idx+1], oldB = buf[idx+2];
+          const nearestIdx = findNearestInList(oldR, oldG, oldB, allowedRGB);
+          const pal = allowedRGB[nearestIdx];
+          buf[idx] = pal[0]; buf[idx+1] = pal[1]; buf[idx+2] = pal[2];
+          const errR = oldR - pal[0], errG = oldG - pal[1], errB = oldB - pal[2];
+          // distribute to neighbors inside the block with a simple kernel
+          const neighbors = [
+            {x:1,y:0,w:0.5}, {x:0,y:1,w:0.3}, {x:1,y:1,w:0.2}
+          ];
+          for (const n of neighbors) {
+            const nx = x + n.x, ny = y + n.y;
+            if (nx < bx || nx >= Math.min(bx+blockSize,width) || ny < by || ny >= Math.min(by+blockSize,height)) continue;
+            const nidx = (ny*width + nx)*4;
+            buf[nidx]   = buf[nidx]   + errR * n.w;
+            buf[nidx+1] = buf[nidx+1] + errG * n.w;
+            buf[nidx+2] = buf[nidx+2] + errB * n.w;
+          }
+        }
+      }
+    }
+  }
+
+  for (let i=0;i<data.length;i++) {
+    if (i%4===3) data[i] = buf[i]; else data[i] = Math.max(0, Math.min(255, Math.round(buf[i])));
+  }
+  return imgData;
+}
+
+// Riemersma-style diffusion using Morton (Z-order) curve as a space-filling traversal
+function mortonOrderIndices(width, height) {
+  const order = [];
+  const maxDim = Math.max(width, height);
+  let p = 1;
+  while (p < maxDim) p <<= 1;
+  const total = p*p;
+  for (let d=0; d<total; d++) {
+    let x = 0, y = 0;
+    let code = d;
+    for (let i=0; (1<<i) <= p; i++) {
+      const bitx = (code >> (2*i)) & 1;
+      const bity = (code >> (2*i+1)) & 1;
+      x |= (bitx << i);
+      y |= (bity << i);
+    }
+    if (x < width && y < height) order.push(y*width + x);
+  }
+  return order;
+}
+
+function applyRiemersma(imgData, allowedIdxs, kernel) {
+  const width = imgData.width, height = imgData.height;
+  const data = imgData.data;
+  const allowedRGB = allowedIdxs.map(i=>PALETTE_RGB[i]);
+  const buf = new Float32Array(data.length);
+  for (let i=0;i<data.length;i++) buf[i] = data[i];
+
+  const order = mortonOrderIndices(width, height);
+  for (let oi=0; oi<order.length; oi++) {
+    const lin = order[oi];
+    const idx = lin*4;
+    const a = buf[idx+3];
+    if (a === 0) continue;
+    const oldR = buf[idx], oldG = buf[idx+1], oldB = buf[idx+2];
+    const nearestIdx = findNearestInList(oldR, oldG, oldB, allowedRGB);
+    const pal = allowedRGB[nearestIdx];
+    buf[idx] = pal[0]; buf[idx+1] = pal[1]; buf[idx+2] = pal[2];
+    const errR = oldR - pal[0], errG = oldG - pal[1], errB = oldB - pal[2];
+    const K = 6;
+    for (let k=1;k<=K;k++) {
+      const oi2 = oi + k;
+      if (oi2 >= order.length) break;
+      const lin2 = order[oi2];
+      const nidx = lin2*4;
+      const w = (K - k + 1) / ((K*(K+1))/2);
+      buf[nidx]   = buf[nidx]   + errR * w;
+      buf[nidx+1] = buf[nidx+1] + errG * w;
+      buf[nidx+2] = buf[nidx+2] + errB * w;
+    }
+  }
+
+  for (let i=0;i<data.length;i++) {
+    if (i%4===3) data[i] = buf[i]; else data[i] = Math.max(0, Math.min(255, Math.round(buf[i])));
+  }
+  return imgData;
+}
+
+// Perceptual mapping with Floyd diffusion but using YCbCr distance for nearest
+function applyPerceptualFloyd(imgData, allowedIdxs) {
+  const width = imgData.width, height = imgData.height;
+  const data = imgData.data;
+  const allowedRGB = allowedIdxs.map(i=>PALETTE_RGB[i]);
+  const buf = new Float32Array(data.length);
+  for (let i=0;i<data.length;i++) buf[i] = data[i];
+  const kernel = KERNELS.floyd;
+  for (let y=0;y<height;y++) {
+    for (let x=0;x<width;x++) {
+      const idx = (y*width + x)*4;
+      const a = buf[idx+3];
+      if (a === 0) continue;
+      const oldR = buf[idx], oldG = buf[idx+1], oldB = buf[idx+2];
+      const nearestIdx = findNearestInListYCbCr(oldR, oldG, oldB, allowedRGB);
+      const pal = allowedRGB[nearestIdx];
+      buf[idx] = pal[0]; buf[idx+1] = pal[1]; buf[idx+2] = pal[2];
+      const errR = oldR - pal[0], errG = oldG - pal[1], errB = oldB - pal[2];
+      for (const k of kernel) {
+        const nx = x + k.x, ny = y + k.y;
+        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+        const nidx = (ny*width + nx)*4;
+        buf[nidx]   = buf[nidx]   + errR * k.w;
+        buf[nidx+1] = buf[nidx+1] + errG * k.w;
+        buf[nidx+2] = buf[nidx+2] + errB * k.w;
+      }
+    }
+  }
+  for (let i=0;i<data.length;i++) {
+    if (i%4===3) data[i] = buf[i]; else data[i] = Math.max(0, Math.min(255, Math.round(buf[i])));
+  }
+  return imgData;
+}
+
+// Channel-separated diffusion (diffuse each channel with its own kernel/scale)
+function applyChannelSeparated(imgData, allowedIdxs) {
+  const width = imgData.width, height = imgData.height;
+  const data = imgData.data;
+  const allowedRGB = allowedIdxs.map(i=>PALETTE_RGB[i]);
+  const buf = new Float32Array(data.length);
+  for (let i=0;i<data.length;i++) buf[i] = data[i];
+
+  const weights = [1.0, 0.8, 0.6]; // R,G,B intensity of diffusion
+  for (let chan=0; chan<3; chan++) {
+    const kernel = KERNELS.floyd;
+    for (let y=0;y<height;y++) {
+      for (let x=0;x<width;x++) {
+        const idx = (y*width + x)*4;
+        const a = buf[idx+3];
+        if (a === 0) continue;
+        const old = buf[idx+chan];
+        const nearestIdx = findNearestInList(buf[idx], buf[idx+1], buf[idx+2], allowedRGB);
+        const pal = allowedRGB[nearestIdx];
+        buf[idx+chan] = pal[chan];
+        const err = old - pal[chan];
+        for (const k of kernel) {
+          const nx = x + k.x, ny = y + k.y;
+          if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+          const nidx = (ny*width + nx)*4;
+          buf[nidx+chan] = buf[nidx+chan] + err * (k.w * weights[chan]);
+        }
+      }
+    }
+  }
+  for (let i=0;i<data.length;i++) {
+    if (i%4===3) data[i] = buf[i]; else data[i] = Math.max(0, Math.min(255, Math.round(buf[i])));
+  }
+  return imgData;
+}
+
+// Blue-noise tiling (apply ordered threshold from blueNoise8)
+function applyBlueNoise(imgData, allowedIdxs) {
+  const width = imgData.width, height = imgData.height;
+  const data = imgData.data;
+  const allowedRGB = allowedIdxs.map(i=>PALETTE_RGB[i]);
+  const n = blueNoise8.length;
+  const denom = 64;
+  for (let y=0;y<height;y++) {
+    for (let x=0;x<width;x++) {
+      const i = (y*width + x)*4;
+      const a = data[i+3];
+      if (a === 0) continue;
+      const v = blueNoise8[y % n][x % n];
+      const thresh = (v + 0.5)/denom - 0.5;
+      let r = data[i], g = data[i+1], b = data[i+2];
+      r = Math.max(0, Math.min(255, Math.round(r + thresh*18)));
+      g = Math.max(0, Math.min(255, Math.round(g + thresh*18)));
+      b = Math.max(0, Math.min(255, Math.round(b + thresh*18)));
+      const idx = findNearestInList(r,g,b, allowedRGB);
+      const pal = allowedRGB[idx];
+      data[i] = pal[0]; data[i+1] = pal[1]; data[i+2] = pal[2];
+    }
+  }
+  return imgData;
+}
+
+// multipass hybrid: ordered then serpentine floyd
+function applyMultipassHybrid(imgData, allowedIdxs) {
+  let tmp = applyOrdered(imgData, allowedIdxs, bayer4, 12);
+  tmp = applyErrorDiffusionSerpentine(tmp, allowedIdxs, KERNELS.floyd);
+  return tmp;
+}
+
+// General random noise
 function applyRandomNoise(imgData, allowedIdxs) {
   const data = imgData.data;
   const allowedRGB = allowedIdxs.map(i=>PALETTE_RGB[i]);
@@ -1032,10 +858,18 @@ function processCurrentImage() {
     outImageData = mapWithoutDither(outImageData, allowedIdxs);
   } else if (dither === 'ordered_2') {
     outImageData = applyOrdered(outImageData, allowedIdxs, bayer2);
+  } else if (dither === 'ordered_3') {
+    outImageData = applyOrdered(outImageData, allowedIdxs, bayer3);
   } else if (dither === 'ordered_4') {
     outImageData = applyOrdered(outImageData, allowedIdxs, bayer4);
   } else if (dither === 'ordered_8') {
     outImageData = applyOrdered(outImageData, allowedIdxs, bayer8);
+  } else if (dither === 'ordered_16') {
+    outImageData = applyOrdered(outImageData, allowedIdxs, bayer16);
+  } else if (dither === 'blue_noise') {
+    outImageData = applyBlueNoise(outImageData, allowedIdxs);
+  } else if (dither === 'threshold') {
+    outImageData = applyThreshold(outImageData, allowedIdxs);
   } else if (dither === 'random') {
     outImageData = applyRandomNoise(outImageData, allowedIdxs);
   } else if (dither === 'atkinson') {
@@ -1050,6 +884,18 @@ function processCurrentImage() {
     outImageData = applyErrorDiffusion(outImageData, allowedIdxs, KERNELS.sierra);
   } else if (dither === 'floyd') {
     outImageData = applyErrorDiffusion(outImageData, allowedIdxs, KERNELS.floyd);
+  } else if (dither === 'serpentine_floyd') {
+    outImageData = applyErrorDiffusionSerpentine(outImageData, allowedIdxs, KERNELS.floyd);
+  } else if (dither === 'dot_diffusion') {
+    outImageData = applyDotDiffusion(outImageData, allowedIdxs, 8);
+  } else if (dither === 'riemersma') {
+    outImageData = applyRiemersma(outImageData, allowedIdxs, KERNELS.floyd);
+  } else if (dither === 'perceptual_floyd') {
+    outImageData = applyPerceptualFloyd(outImageData, allowedIdxs);
+  } else if (dither === 'channel_separated') {
+    outImageData = applyChannelSeparated(outImageData, allowedIdxs);
+  } else if (dither === 'multipass_hybrid') {
+    outImageData = applyMultipassHybrid(outImageData, allowedIdxs);
   } else {
     outImageData = mapWithoutDither(outImageData, allowedIdxs);
   }
@@ -1095,7 +941,6 @@ downloadBtn.addEventListener('click', () => {
 function updateRgbControlsVisibility() {
   const show = !!diverseCheck.checked;
   rgbControlsDiv.style.display = show ? 'flex' : 'none';
-  // disable controls when hidden to avoid them influencing processing accidentally
   rgbBalanceCheck.disabled = !show;
   rgbBalanceAxis.disabled = !show;
   rgbBalanceStrength.disabled = !show;
@@ -1110,7 +955,37 @@ function updateRgbControlsVisibility() {
   });
 });
 
-// initialize UI defaults
+// Kernels (weights sum approximately to 1)
+const KERNELS = {
+  'floyd': [
+    {x:1,y:0,w:7/16}, {x:-1,y:1,w:3/16}, {x:0,y:1,w:5/16}, {x:1,y:1,w:1/16}
+  ],
+  'burkes': [
+    {x:1,y:0,w:8/32}, {x:2,y:0,w:4/32},
+    {x:-2,y:1,w:2/32}, {x:-1,y:1,w:4/32}, {x:0,y:1,w:8/32}, {x:1,y:1,w:4/32}, {x:2,y:1,w:2/32}
+  ],
+  'jarvis': [
+    {x:1,y:0,w:7/48}, {x:2,y:0,w:5/48},
+    {x:-2,y:1,w:3/48},{x:-1,y:1,w:5/48},{x:0,y:1,w:7/48},{x:1,y:1,w:5/48},{x:2,y:1,w:3/48},
+    {x:-2,y:2,w:1/48},{x:-1,y:2,w:3/48},{x:0,y:2,w:5/48},{x:1,y:2,w:3/48},{x:2,y:2,w:1/48}
+  ],
+  'sierra': [
+    {x:1,y:0,w:5/32}, {x:2,y:0,w:3/32},
+    {x:-2,y:1,w:2/32},{x:-1,y:1,w:4/32},{x:0,y:1,w:5/32},{x:1,y:1,w:4/32},{x:2,y:1,w:2/32},
+    {x:-1,y:2,w:2/32},{x:0,y:2,w:3/32},{x:1,y:2,w:2/32}
+  ],
+  'stucki': [
+    {x:1,y:0,w:8/42},{x:2,y:0,w:4/42},
+    {x:-2,y:1,w:2/42},{x:-1,y:1,w:4/42},{x:0,y:1,w:8/42},{x:1,y:1,w:4/42},{x:2,y:1,w:2/42},
+    {x:-2,y:2,w:1/42},{x:-1,y:2,w:2/42},{x:0,y:2,w:4/42},{x:1,y:2,w:2/42},{x:2,y:2,w:1/42}
+  ],
+  'atkinson': [
+    {x:1,y:0,w:1/8},{x:2,y:0,w:1/8},
+    {x:-1,y:1,w:1/8},{x:0,y:1,w:1/8},{x:1,y:1,w:1/8},
+    {x:0,y:2,w:1/8}
+  ]
+};
+
 rgbBalanceAxis.value = 'auto';
 updateRgbControlsVisibility();
 
