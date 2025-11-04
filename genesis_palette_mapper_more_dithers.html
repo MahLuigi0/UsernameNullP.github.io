@@ -24,7 +24,7 @@
 </head>
 <body>
 <h2>Sega Genesis Palette Mapper — More Dithers (Fixed)</h2>
-<p>Upload a sprite. Dithers included: ordered (2×2/3×3/4×4/8×8/16×16), blue-noise, threshold, random, serpentine error-diffusion, standard error-diffusion kernels, dot-diffusion (simple), Riemersma-style (Morton order) diffusion, perceptual distance mapping, channel-separated diffusion, and a multipass hybrid.</p>
+<p>Upload a sprite. Dithers included: ordered (2×2/3×3/4×4/8×8/16×16), blue-noise, threshold, random, serpentine error-diffusion, standard error-diffusion kernels, dot-diffusion (simple), Riemers[...]
 
 <div class="controls">
   <input id="fileInput" type="file" accept="image/*" />
@@ -51,7 +51,8 @@
         <option value="burkes">Burkes</option>
       </optgroup>
       <option value="perceptual_floyd">Perceptual (YCbCr) + Floyd</option>
-      <option value="channel_separated">Channel-separated diffusion</option>
+      <!-- Removed Channel-separated diffusion option -->
+      <!-- <option value="channel_separated">Channel-separated diffusion</option> -->
       <option value="dot_diffusion">Dot-diffusion (block)</option>
       <option value="riemersma">Riemersma/Morton-order diffusion</option>
       <option value="multipass_hybrid">Multi-pass hybrid (ordered → serpentine)</option>
@@ -670,41 +671,7 @@ function applyPerceptualFloyd(imgData, allowedIdxs) {
   return imgData;
 }
 
-// Channel-separated diffusion (diffuse each channel with its own kernel/scale)
-function applyChannelSeparated(imgData, allowedIdxs) {
-  const width = imgData.width, height = imgData.height;
-  const data = imgData.data;
-  const allowedRGB = allowedIdxs.map(i=>PALETTE_RGB[i]);
-  const buf = new Float32Array(data.length);
-  for (let i=0;i<data.length;i++) buf[i] = data[i];
-
-  const weights = [1.0, 0.8, 0.6]; // R,G,B intensity of diffusion
-  for (let chan=0; chan<3; chan++) {
-    const kernel = KERNELS.floyd;
-    for (let y=0;y<height;y++) {
-      for (let x=0;x<width;x++) {
-        const idx = (y*width + x)*4;
-        const a = buf[idx+3];
-        if (a === 0) continue;
-        const old = buf[idx+chan];
-        const nearestIdx = findNearestInList(buf[idx], buf[idx+1], buf[idx+2], allowedRGB);
-        const pal = allowedRGB[nearestIdx];
-        buf[idx+chan] = pal[chan];
-        const err = old - pal[chan];
-        for (const k of kernel) {
-          const nx = x + k.x, ny = y + k.y;
-          if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
-          const nidx = (ny*width + nx)*4;
-          buf[nidx+chan] = buf[nidx+chan] + err * (k.w * weights[chan]);
-        }
-      }
-    }
-  }
-  for (let i=0;i<data.length;i++) {
-    if (i%4===3) data[i] = buf[i]; else data[i] = Math.max(0, Math.min(255, Math.round(buf[i])));
-  }
-  return imgData;
-}
+// Removed applyChannelSeparated
 
 // Blue-noise tiling (apply ordered threshold from blueNoise8)
 function applyBlueNoise(imgData, allowedIdxs) {
@@ -892,8 +859,8 @@ function processCurrentImage() {
     outImageData = applyRiemersma(outImageData, allowedIdxs, KERNELS.floyd);
   } else if (dither === 'perceptual_floyd') {
     outImageData = applyPerceptualFloyd(outImageData, allowedIdxs);
-  } else if (dither === 'channel_separated') {
-    outImageData = applyChannelSeparated(outImageData, allowedIdxs);
+  // Removed: else if (dither === 'channel_separated')
+  // Removed: outImageData = applyChannelSeparated(outImageData, allowedIdxs);
   } else if (dither === 'multipass_hybrid') {
     outImageData = applyMultipassHybrid(outImageData, allowedIdxs);
   } else {
