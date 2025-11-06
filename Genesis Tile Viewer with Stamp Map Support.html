@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Genesis Tile Viewer with Stamp Map Support</title>
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; padding: 18px; max-width: 1000px; margin: auto; }
+    h1 { font-size: 1.2rem; margin-bottom: 10px; }
+    label { display:block; margin: 10px 0; }
+    #canvas { border:1px solid #444; image-rendering: pixelated; display:block; margin-top:12px; max-width: 100%; }
+    #palettePreview { margin-top:10px; white-space:nowrap; }
+    .sw { width:20px; height:20px; display:inline-block; margin:2px; border:1px solid #222; }
+    .hint { color:#666; font-size:0.9rem; margin-top:8px; }
+    .controls-container { display: flex; flex-wrap: wrap; gap: 40px; background-color: #f9f9f9; padding: 10px 20px; border-radius: 8px; margin-top: 10px;}
+    .control-group h2 { font-size: 1rem; margin-top: 10px; margin-bottom: 5px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+  </style>
+</head>
+<body>
+  <h1>Genesis Tile Viewer — with Stamp Map Support</h1>
+
+  <div class="controls-container">
+    <div class="control-group">
+      <h2>Input Files</h2>
+      <label>Tile file (.bin / .unc): <input id="fileTiles" type="file" accept=".bin,.unc" /></label>
+      <label>Palette file (.bin / .pal): <input id="filePalette" type="file" accept=".bin,.pal,.unc" /></label>
+      <label>Stamp map file (.bin / .unc): <input id="fileStampMap" type="file" accept=".bin,.unc" /></label>
+    </div>
+    <div class="control-group">
+      <h2>Stamp Map Settings</h2>
+      <label>Map Size (in stamps):
+        <select id="settingMapSize">
+          <option value="16x16">16x16 stamps (for 256x256px map)</option>
+          <option value="8x8">8x8 stamps (for 256x256px map)</option>
+          <option value="256x256" selected>256x256 stamps (for 4096x4096px map)</option>
+          <option value="128x128">128x128 stamps (for 4096x4096px map)</option>
+        </select>
+      </label>
+      <label>Stamp Size (in pixels):
+        <select id="settingStampSize">
+          <option value="16">16x16</option>
+          <option value="32">32x32</option>
+        </select>
+      </label>
+      <div class="hint">These settings are only used when a stamp map is loaded.</div>
+    </div>
+  </div>
+
+  <div class="hint">Tiles are assumed 8×8, 4bpp (32 bytes per tile). Without a map, tiles are shown in a 32-wide grid.</div>
+
+  <canvas id="canvas"></canvas>
+  <div id="palettePreview"></div>
+
+<script>
+const fileTiles = document.getElementById('fileTiles');
+const filePalette = document.getElementById('filePalette');
+const fileStampMap = document.getElementById('fileStampMap');
+const settingMapSize = document.getElementById('settingMapSize');
+const settingStampSize = document.getElementById('settingStampSize');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const palettePreview = document.getElementById('palettePreview');
+
+let tileData = null;
+let paletteData = null;
+let stampMapData = null;
+
+fileTiles.addEventListener('change', async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  tileData = new Uint8Array(await f.arrayBuffer());
+  renderIfReady();
+});
+
+filePalette.addEventListener('change', async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  paletteData = new Uint8Array(await f.arrayBuffer());
+  renderIfReady();
+});
+
+fileStampMap.addEventListener('change', async (e) => {
+  const f = e.target.files[0];
+  if (!f) {
+    stampMapData = null;
+  } else {
+    stampMapData = new Uint8Array(await f.arrayBuffer());
+  }
+  renderIfReady();
+});
+
+settingMapSize.addEventListener('change', renderIfReady);
+settingStampSize.addEventListener('change', renderIfReady);
+
+function parsePaletteFromData(pData) {
+  if (!pData || pData.length < 2) return null;
+  const entries = Math.floor(pData.length / 2);
+  const palette = new Array(entries);
+  for (let i = 0; i < entries; i++) {
+    const wordValue = (pData[i * 2] << 8) | pData[i * 2 + 1];
+    const blueNib  = (wordValue >> 8) & 0x0E;
+    const greenNib = (wordValue >> 4) & 0x0E;
+    const redNib   = wordValue & 0x0E;
+    const R = redNib   * 17;
+    const G = greenNib * 17;
+    const B = blueNib  * 17;
+    palette[i] = { r: R, g: G, b: B };
+  }
+  return palette;
+}
+
+function showPalettePreview(palette) {
+  palettePreview.innerHTML = '';
+  if (!palette) return;
+  const max = Math.min(palette.length, 256);
+  for (let i = 0; i < max; i++) {
+    const p = palette[i];
+    const div = document.createElement('div');
+    div.className = 'sw';
+    div.title = `#${i} rgb(${p.r},${p.g},${p.b})`;
+    div.style.backgroundColor = `rgb(${p.r},${p.g},${p.b})`;
+    palettePreview.appendChild(div);
+  }
+}
+
+function renderIfReady() {
+  if (!tileData) return;
+  const palette = paletteData ? parsePaletteFromData(paletteData) : null;
+  showPalettePreview(palette);
+  if (stampMapData) {
+    renderStampMap(tileData, palette, stampMapData);
+  } else {
+    renderTileGrid(tileData, palette);
+  }
+}
+
+function drawTileOntoImageData(imgData, tileIndex, tileData, palette, targetX, targetY) {
+  const tileW = 8, tileH = 8;
+  const bytesPerTile = 32;
+  const base = tileIndex * bytesPerTile;
+  if (base + bytesPerTile > tileData.length) return;
+  const imageW = imgData.width;
+  const px = imgData.data;
+  for (let row = 0; row < tileH; row++) {
+    const rowOffset = base + row * 4;
+    for (let col = 0; col < tileW; col++) {
+      const byteIndex = rowOffset + (col >> 1);
+      const b = tileData[byteIndex];
+      const pixelVal = (col & 1) === 0 ? ((b >> 4) & 0x0F) : (b & 0x0F);
+      let R = 0, G = 0, B = 0;
+      if (pixelVal !== 0) {
+        if (palette && pixelVal < palette.length) {
+          const pcol = palette[pixelVal];
+          R = pcol.r; G = pcol.g; B = pcol.b;
+        } else {
+          const g = Math.round((pixelVal / 15) * 255);
+          R = G = B = g;
+        }
+      }
+      const x = targetX + col;
+      const y = targetY + row;
+      const di = (y * imageW + x) * 4;
+      px[di] = R;
+      px[di + 1] = G;
+      px[di + 2] = B;
+      px[di + 3] = (pixelVal === 0) ? 0 : 255;
+    }
+  }
+}
+
+function renderStampMap(tileData, palette, stampMapData) {
+  const [mapW, mapH] = settingMapSize.value.split('x').map(Number);
+  const stampSize = parseInt(settingStampSize.value, 10);
+  const tilesPerDim = stampSize / 8;
+
+  canvas.width = mapW * stampSize;
+  canvas.height = mapH * stampSize;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  const stampCanvas = document.createElement('canvas');
+  stampCanvas.width = stampCanvas.height = stampSize;
+  const stampCtx = stampCanvas.getContext('2d');
+  const stampImgData = stampCtx.createImageData(stampSize, stampSize);
+
+  const mapView = new DataView(stampMapData.buffer);
+
+  for (let my = 0; my < mapH; my++) {
+    for (let mx = 0; mx < mapW; mx++) {
+      const mapIndex = my * mapW + mx;
+      if ((mapIndex * 2 + 1) >= mapView.byteLength) continue;
+      const word = mapView.getUint16(mapIndex * 2);
+      if (word === 0) continue;
+      const hFlip = (word & 0x8000) !== 0;
+      const rotation = (word >> 13) & 0x03;
+      let stampAddr = word & 0x7FF;
+      if (stampSize === 32) stampAddr &= ~0x03;
+      const baseTileIndex = stampAddr * 4;
+
+      stampImgData.data.fill(0);
+      for (let sty = 0; sty < tilesPerDim; sty++) {
+        for (let stx = 0; stx < tilesPerDim; stx++) {
+          const tileIndexInStamp = stx * tilesPerDim + sty; // FIXED vertical arrangement
+          drawTileOntoImageData(stampImgData, baseTileIndex + tileIndexInStamp, tileData, palette, stx * 8, sty * 8);
+        }
+      }
+      stampCtx.putImageData(stampImgData, 0, 0);
+
+      const destX = mx * stampSize;
+      const destY = my * stampSize;
+      const centerX = destX + stampSize / 2;
+      const centerY = destY + stampSize / 2;
+
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(rotation * Math.PI / 2);
+      if (hFlip) ctx.scale(-1, 1);
+      ctx.drawImage(stampCanvas, -stampSize / 2, -stampSize / 2);
+      ctx.restore();
+    }
+  }
+}
+
+function renderTileGrid(data, palette) {
+  const tileW = 8, tileH = 8;
+  const bytesPerTile = 32;
+  const tilesPerRow = 32;
+  const numTiles = Math.floor(data.length / bytesPerTile);
+  if (numTiles === 0) {
+    canvas.width = 1; canvas.height = 1;
+    ctx.clearRect(0,0,1,1);
+    return;
+  }
+  const imageW = tilesPerRow * tileW;
+  const imageH = Math.ceil(numTiles / tilesPerRow) * tileH;
+  canvas.width = imageW;
+  canvas.height = imageH;
+  const img = ctx.createImageData(imageW, imageH);
+  for (let t = 0; t < numTiles; t++) {
+    const tileX = (t % tilesPerRow) * tileW;
+    const tileY = Math.floor(t / tilesPerRow) * tileH;
+    drawTileOntoImageData(img, t, data, palette, tileX, tileY);
+  }
+  ctx.putImageData(img, 0, 0);
+}
+</script>
+</body>
+</html>
