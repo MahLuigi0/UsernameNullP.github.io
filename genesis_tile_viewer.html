@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Genesis Tile Viewer — with Stamp Map Support</title>
+  <title>Genesis Tile Viewer with Stamp Map Support</title>
   <style>
     body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; padding: 18px; max-width: 1000px; margin: auto; }
     h1 { font-size: 1.2rem; margin-bottom: 10px; }
@@ -13,8 +13,6 @@
     .hint { color:#666; font-size:0.9rem; margin-top:8px; }
     .controls-container { display: flex; flex-wrap: wrap; gap: 40px; background-color: #f9f9f9; padding: 10px 20px; border-radius: 8px; margin-top: 10px;}
     .control-group h2 { font-size: 1rem; margin-top: 10px; margin-bottom: 5px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
-    .button-row { margin-top: 12px; display:flex; gap: 8px; align-items:center; }
-    button[disabled] { opacity: 0.5; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -49,11 +47,6 @@
 
   <div class="hint">Tiles are assumed 8×8, 4bpp (32 bytes per tile). Without a map, tiles are shown in a 32-wide grid.</div>
 
-  <div class="button-row">
-    <button id="exportButton" disabled>Export PNG</button>
-    <div id="exportHint" class="hint">Export will be enabled when something is rendered.</div>
-  </div>
-
   <canvas id="canvas"></canvas>
   <div id="palettePreview"></div>
 
@@ -66,23 +59,14 @@ const settingStampSize = document.getElementById('settingStampSize');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const palettePreview = document.getElementById('palettePreview');
-const exportButton = document.getElementById('exportButton');
-const exportHint = document.getElementById('exportHint');
 
 let tileData = null;
 let paletteData = null;
 let stampMapData = null;
-let tileFilename = null;
-let hasRendered = false;
 
 fileTiles.addEventListener('change', async (e) => {
   const f = e.target.files[0];
-  if (!f) {
-    tileData = null; tileFilename = null;
-    renderIfReady();
-    return;
-  }
-  tileFilename = f.name;
+  if (!f) return;
   tileData = new Uint8Array(await f.arrayBuffer());
   renderIfReady();
 });
@@ -106,24 +90,6 @@ fileStampMap.addEventListener('change', async (e) => {
 
 settingMapSize.addEventListener('change', renderIfReady);
 settingStampSize.addEventListener('change', renderIfReady);
-
-exportButton.addEventListener('click', () => {
-  if (!hasRendered) return;
-  const baseName = tileFilename ? tileFilename.replace(/\.[^.]+$/, '') + '-rendered' : 'rendered';
-  const filename = baseName + '.png';
-  // Use toBlob for binary download
-  canvas.toBlob((blob) => {
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }, 'image/png');
-});
 
 function parsePaletteFromData(pData) {
   if (!pData || pData.length < 2) return null;
@@ -156,20 +122,8 @@ function showPalettePreview(palette) {
   }
 }
 
-function updateExportState() {
-  exportButton.disabled = !hasRendered;
-  exportHint.textContent = hasRendered ? `Click Export PNG to download (${tileFilename ? tileFilename.replace(/\.[^.]+$/, '') + '-rendered.png' : 'rendered.png'})` : 'Export will be enabled when something is rendered.';
-}
-
 function renderIfReady() {
-  hasRendered = false; // reset; rendering functions will set true if they draw anything
-  if (!tileData) {
-    // clear canvas and disable export
-    canvas.width = 1; canvas.height = 1;
-    ctx.clearRect(0,0,1,1);
-    updateExportState();
-    return;
-  }
+  if (!tileData) return;
   const palette = paletteData ? parsePaletteFromData(paletteData) : null;
   showPalettePreview(palette);
   if (stampMapData) {
@@ -177,7 +131,6 @@ function renderIfReady() {
   } else {
     renderTileGrid(tileData, palette);
   }
-  updateExportState();
 }
 
 function drawTileOntoImageData(imgData, tileIndex, tileData, palette, targetX, targetY) {
@@ -210,7 +163,6 @@ function drawTileOntoImageData(imgData, tileIndex, tileData, palette, targetX, t
       px[di + 1] = G;
       px[di + 2] = B;
       px[di + 3] = (pixelVal === 0) ? 0 : 255;
-      if (pixelVal !== 0) hasRendered = true; // mark that something opaque was drawn
     }
   }
 }
@@ -220,27 +172,16 @@ function renderStampMap(tileData, palette, stampMapData) {
   const stampSize = parseInt(settingStampSize.value, 10);
   const tilesPerDim = stampSize / 8;
 
-  // Pre-scan map to see if there's any non-zero entry (if none, nothing will be rendered)
-  const mapView = new DataView(stampMapData.buffer);
-  let anyNonZero = false;
-  for (let i = 0; i < mapW * mapH; i++) {
-    if ((i*2 + 1) >= mapView.byteLength) break;
-    const w = mapView.getUint16(i*2);
-    if (w !== 0) { anyNonZero = true; break; }
-  }
-
   canvas.width = mapW * stampSize;
   canvas.height = mapH * stampSize;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  if (!anyNonZero) {
-    // nothing to render
-    return;
-  }
-
+  
   const stampCanvas = document.createElement('canvas');
   stampCanvas.width = stampCanvas.height = stampSize;
   const stampCtx = stampCanvas.getContext('2d');
   const stampImgData = stampCtx.createImageData(stampSize, stampSize);
+
+  const mapView = new DataView(stampMapData.buffer);
 
   for (let my = 0; my < mapH; my++) {
     for (let mx = 0; mx < mapW; mx++) {
@@ -250,15 +191,19 @@ function renderStampMap(tileData, palette, stampMapData) {
       if (word === 0) continue;
       const hFlip = (word & 0x8000) !== 0;
       const rotation = (word >> 13) & 0x03;
-      let stampAddr = word & 0x7FF;
+      
+      // BUG FIX: The stamp map uses index 0 for a blank stamp that is not in the
+      // tile data. Subtract 1 from the map's index to get the correct 0-based
+      // index for the packed tile data.
+      let stampAddr = (word & 0x7FF) - 1;
+      
       if (stampSize === 32) stampAddr &= ~0x03;
       const baseTileIndex = stampAddr * 4;
 
-      // clear stamp image data
       stampImgData.data.fill(0);
       for (let sty = 0; sty < tilesPerDim; sty++) {
         for (let stx = 0; stx < tilesPerDim; stx++) {
-          const tileIndexInStamp = stx * tilesPerDim + sty; // vertical arrangement fix
+          const tileIndexInStamp = stx * tilesPerDim + sty; // FIXED vertical arrangement
           drawTileOntoImageData(stampImgData, baseTileIndex + tileIndexInStamp, tileData, palette, stx * 8, sty * 8);
         }
       }
@@ -277,8 +222,6 @@ function renderStampMap(tileData, palette, stampMapData) {
       ctx.restore();
     }
   }
-  // If we got here and anyNonZero was true, we consider it rendered
-  if (anyNonZero) hasRendered = true;
 }
 
 function renderTileGrid(data, palette) {
@@ -302,7 +245,6 @@ function renderTileGrid(data, palette) {
     drawTileOntoImageData(img, t, data, palette, tileX, tileY);
   }
   ctx.putImageData(img, 0, 0);
-  if (numTiles > 0) hasRendered = true;
 }
 </script>
 </body>
