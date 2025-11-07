@@ -4,29 +4,47 @@
   <meta charset="utf-8" />
   <title>Genesis Tile Viewer with Stamp Map Support</title>
   <style>
+    /* Page layout and typography */
     body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; padding: 18px; max-width: 1000px; margin: auto; }
     h1 { font-size: 1.2rem; margin-bottom: 10px; }
     label { display:block; margin: 10px 0; }
+
+    /* Canvas styling — 'image-rendering: pixelated' keeps pixels crisp when scaled */
     #canvas { border:1px solid #444; image-rendering: pixelated; display:block; margin-top:12px; max-width: 100%; }
+
+    /* Palette preview swatches */
     #palettePreview { margin-top:10px; white-space:nowrap; }
     .sw { width:20px; height:20px; display:inline-block; margin:2px; border:1px solid #222; }
     .hint { color:#666; font-size:0.9rem; margin-top:8px; }
+
+    /* Controls layout */
     .controls-container { display: flex; flex-wrap: wrap; gap: 40px; background-color: #f9f9f9; padding: 10px 20px; border-radius: 8px; margin-top: 10px;}
     .control-group h2 { font-size: 1rem; margin-top: 10px; margin-bottom: 5px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+    
+    /* Progress indicator */
+    #progressBar { width: 100%; height: 20px; background: #e0e0e0; border-radius: 4px; margin-top: 10px; overflow: hidden; display: none; }
+    #progressFill { height: 100%; background: #4CAF50; transition: width 0.2s; width: 0%; }
+    #progressText { text-align: center; margin-top: 5px; color: #666; display: none; }
   </style>
 </head>
 <body>
   <h1>Genesis Tile Viewer — with Stamp Map Support</h1>
 
+  <!-- Controls for loading files and changing stamp/map settings -->
   <div class="controls-container">
     <div class="control-group">
       <h2>Input Files</h2>
+      <!-- Tile file: expected 4bpp 8x8 tiles packed as 32 bytes per tile -->
       <label>Tile file (.bin / .unc): <input id="fileTiles" type="file" accept=".bin,.unc" /></label>
+      <!-- Palette file: 16-bit words (Genesis/MD 9-bit RGB style packed in 2 bytes) -->
       <label>Palette file (.bin / .pal): <input id="filePalette" type="file" accept=".bin,.pal,.unc" /></label>
+      <!-- Stamp map file: optional; when provided the viewer draws a stamp map rather than grid -->
       <label>Stamp map file (.bin / .unc): <input id="fileStampMap" type="file" accept=".bin,.unc" /></label>
     </div>
+
     <div class="control-group">
       <h2>Stamp Map Settings</h2>
+      <!-- Map size determines stamp grid dimensions (interpreted in stamps) -->
       <label>Map Size (in stamps):
         <select id="settingMapSize">
           <option value="16x16">16x16 stamps (for 256x256px map)</option>
@@ -35,6 +53,8 @@
           <option value="128x128">128x128 stamps (for 4096x4096px map)</option>
         </select>
       </label>
+
+      <!-- Stamp size: typical Genesis stamp pack sizes are 16x16 or 32x32 pixels -->
       <label>Stamp Size (in pixels):
         <select id="settingStampSize">
           <option value="16">16x16</option>
@@ -47,10 +67,20 @@
 
   <div class="hint">Tiles are assumed 8×8, 4bpp (32 bytes per tile). Without a map, tiles are shown in a 32-wide grid.</div>
 
+  <!-- Progress indicators -->
+  <div id="progressBar"><div id="progressFill"></div></div>
+  <div id="progressText"></div>
+
+  <!-- Canvas where the tile grid or stamp map is drawn -->
   <canvas id="canvas"></canvas>
+
+  <!-- Small preview of the loaded palette -->
   <div id="palettePreview"></div>
 
 <script>
+/* -------------------------
+   DOM references & state
+   ------------------------- */
 const fileTiles = document.getElementById('fileTiles');
 const filePalette = document.getElementById('filePalette');
 const fileStampMap = document.getElementById('fileStampMap');
@@ -59,11 +89,20 @@ const settingStampSize = document.getElementById('settingStampSize');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const palettePreview = document.getElementById('palettePreview');
+const progressBar = document.getElementById('progressBar');
+const progressFill = document.getElementById('progressFill');
+const progressText = document.getElementById('progressText');
 
-let tileData = null;
-let paletteData = null;
-let stampMapData = null;
+let tileData = null;     // Uint8Array for raw tile file bytes
+let paletteData = null;  // Uint8Array for raw palette bytes
+let stampMapData = null; // Uint8Array for raw stamp map bytes
+let renderingInProgress = false;
+let cancelRendering = false;
 
+/* -------------------------
+   File input handlers
+   ------------------------- */
+/* Load tile file into tileData (Uint8Array) then attempt render */
 fileTiles.addEventListener('change', async (e) => {
   const f = e.target.files[0];
   if (!f) return;
@@ -71,6 +110,7 @@ fileTiles.addEventListener('change', async (e) => {
   renderIfReady();
 });
 
+/* Load palette file into paletteData (Uint8Array) then attempt render */
 filePalette.addEventListener('change', async (e) => {
   const f = e.target.files[0];
   if (!f) return;
@@ -78,6 +118,7 @@ filePalette.addEventListener('change', async (e) => {
   renderIfReady();
 });
 
+/* Load or clear stamp map file; stamp map is optional */
 fileStampMap.addEventListener('change', async (e) => {
   const f = e.target.files[0];
   if (!f) {
@@ -88,26 +129,43 @@ fileStampMap.addEventListener('change', async (e) => {
   renderIfReady();
 });
 
+/* Changing stamp/map settings triggers a re-render */
 settingMapSize.addEventListener('change', renderIfReady);
 settingStampSize.addEventListener('change', renderIfReady);
 
+/* -------------------------
+   Palette parsing & preview
+   ------------------------- */
+/**
+ * parsePaletteFromData
+ * Convert a binary palette format (pairs of bytes) into an array of {r,g,b}.
+ * Assumes words are in big-endian order in the buffer: (byte0 << 8) | byte1.
+ * Bits are interpreted as 3 nibbles like the Genesis 9-bit-ish format scaled to 0-255.
+ */
 function parsePaletteFromData(pData) {
   if (!pData || pData.length < 2) return null;
   const entries = Math.floor(pData.length / 2);
   const palette = new Array(entries);
   for (let i = 0; i < entries; i++) {
+    // Combine two bytes into a 16-bit word
     const wordValue = (pData[i * 2] << 8) | pData[i * 2 + 1];
+
+    // Extract pseudo-nibbles for B,G,R (these masks follow the original code's intent)
     const blueNib  = (wordValue >> 8) & 0x0E;
     const greenNib = (wordValue >> 4) & 0x0E;
     const redNib   = wordValue & 0x0E;
+
+    // Stretch nibble (0-14 step 2) to 0-255 by multiplying by 17 (approximate)
     const R = redNib   * 17;
     const G = greenNib * 17;
     const B = blueNib  * 17;
+
     palette[i] = { r: R, g: G, b: B };
   }
   return palette;
 }
 
+/* Show a simple row of swatches to help visually verify the loaded palette */
 function showPalettePreview(palette) {
   palettePreview.innerHTML = '';
   if (!palette) return;
@@ -122,32 +180,84 @@ function showPalettePreview(palette) {
   }
 }
 
-function renderIfReady() {
-  if (!tileData) return;
+/* -------------------------
+   Progress display helpers
+   ------------------------- */
+function showProgress(show) {
+  progressBar.style.display = show ? 'block' : 'none';
+  progressText.style.display = show ? 'block' : 'none';
+}
+
+function updateProgress(current, total) {
+  const percent = Math.round((current / total) * 100);
+  progressFill.style.width = percent + '%';
+  progressText.textContent = `Rendering: ${current} / ${total} stamps (${percent}%)`;
+}
+
+/* -------------------------
+   Main render dispatcher
+   ------------------------- */
+/* Decide whether to draw a stamp map or the raw tile grid */
+async function renderIfReady() {
+  if (!tileData) return; // nothing to draw until we have tile data
+
+  // Cancel any ongoing render
+  if (renderingInProgress) {
+    cancelRendering = true;
+    // Wait a bit for the cancellation to complete
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+
   const palette = paletteData ? parsePaletteFromData(paletteData) : null;
   showPalettePreview(palette);
+
+  // If stamp map is present render the map; otherwise show a simple tile grid
   if (stampMapData) {
-    renderStampMap(tileData, palette, stampMapData);
+    await renderStampMap(tileData, palette, stampMapData);
   } else {
     renderTileGrid(tileData, palette);
   }
 }
 
+/* -------------------------
+   Tile drawing helpers
+   ------------------------- */
+/**
+ * drawTileOntoImageData
+ * Render a single 8x8 tile (4bpp) from the packed tileData into an ImageData buffer.
+ *
+ * - imgData: ImageData object to modify (imgData.data is Uint8ClampedArray)
+ * - tileIndex: index of the tile (0-based) in 32-byte-per-tile layout
+ * - tileData: raw ArrayBuffer/Uint8Array with tile bytes
+ * - palette: optional parsed palette array; if missing, uses grayscale from value
+ * - targetX, targetY: destination pixel coordinates inside imgData
+ */
 function drawTileOntoImageData(imgData, tileIndex, tileData, palette, targetX, targetY) {
   const tileW = 8, tileH = 8;
   const bytesPerTile = 32;
   const base = tileIndex * bytesPerTile;
+
+  // Bounds check: if tile index points beyond available bytes, skip it
   if (base + bytesPerTile > tileData.length) return;
+
   const imageW = imgData.width;
   const px = imgData.data;
+
+  // Each tile is 8 rows; each row takes 4 bytes (2 pixels per byte for 4bpp)
   for (let row = 0; row < tileH; row++) {
-    const rowOffset = base + row * 4;
+    const rowOffset = base + row * 4; // 4 bytes per row
     for (let col = 0; col < tileW; col++) {
-      const byteIndex = rowOffset + (col >> 1);
+      const byteIndex = rowOffset + (col >> 1); // two pixels per byte
       const b = tileData[byteIndex];
+
+      // Extract 4-bit pixel value: high nibble for even column, low nibble for odd
       const pixelVal = (col & 1) === 0 ? ((b >> 4) & 0x0F) : (b & 0x0F);
+
+      // Default color is black (and fully transparent for palette index 0)
       let R = 0, G = 0, B = 0;
+
       if (pixelVal !== 0) {
+        // If a palette exists and covers the index use it, otherwise compute grayscale
         if (palette && pixelVal < palette.length) {
           const pcol = palette[pixelVal];
           R = pcol.r; G = pcol.g; B = pcol.b;
@@ -156,89 +266,179 @@ function drawTileOntoImageData(imgData, tileIndex, tileData, palette, targetX, t
           R = G = B = g;
         }
       }
+
+      // Write to the ImageData backing buffer
       const x = targetX + col;
       const y = targetY + row;
       const di = (y * imageW + x) * 4;
       px[di] = R;
       px[di + 1] = G;
       px[di + 2] = B;
-      px[di + 3] = (pixelVal === 0) ? 0 : 255;
+      px[di + 3] = (pixelVal === 0) ? 0 : 255; // index 0 => transparent
     }
   }
 }
 
-function renderStampMap(tileData, palette, stampMapData) {
+/* -------------------------
+   Stamp map rendering (OPTIMIZED)
+   ------------------------- */
+/**
+ * renderStampMap
+ * Interpret a stamp map file and draw stamps to the canvas progressively.
+ * Uses requestAnimationFrame to render in batches, preventing browser freeze.
+ */
+async function renderStampMap(tileData, palette, stampMapData) {
+  // Signal that we're starting a new render
+  renderingInProgress = true;
+  cancelRendering = false;
+  
+  // Map size (stamps), stamp pixel size, and how many 8x8 tiles fit in a stamp
   const [mapW, mapH] = settingMapSize.value.split('x').map(Number);
   const stampSize = parseInt(settingStampSize.value, 10);
-  const tilesPerDim = stampSize / 8;
+  const tilesPerDim = stampSize / 8; // e.g., 16px => 2 tiles, 32px => 4 tiles
 
+  // Resize canvas to exactly the stamp map size in pixels
   canvas.width = mapW * stampSize;
   canvas.height = mapH * stampSize;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  
+
+  // Show progress bar
+  showProgress(true);
+
+  // Temporary canvas used for composing a single stamp (so we can rotate/flip and draw)
   const stampCanvas = document.createElement('canvas');
   stampCanvas.width = stampCanvas.height = stampSize;
   const stampCtx = stampCanvas.getContext('2d');
   const stampImgData = stampCtx.createImageData(stampSize, stampSize);
 
+  // Create a DataView to read 16-bit words from the provided stampMapData buffer
   const mapView = new DataView(stampMapData.buffer);
 
-  for (let my = 0; my < mapH; my++) {
-    for (let mx = 0; mx < mapW; mx++) {
-      const mapIndex = my * mapW + mx;
+  const totalStamps = mapW * mapH;
+  const stampsPerBatch = 100; // Process 100 stamps per frame
+  let currentStamp = 0;
+
+  // Process stamps in batches
+  const processBatch = () => {
+    if (cancelRendering) {
+      showProgress(false);
+      renderingInProgress = false;
+      return;
+    }
+
+    const batchEnd = Math.min(currentStamp + stampsPerBatch, totalStamps);
+    
+    for (let i = currentStamp; i < batchEnd; i++) {
+      const my = Math.floor(i / mapW);
+      const mx = i % mapW;
+      const mapIndex = i;
+
+      // Each map entry is 2 bytes (Uint16). Skip if out of bounds.
       if ((mapIndex * 2 + 1) >= mapView.byteLength) continue;
+
+      // Read word (big-endian or platform endianness? DataView defaults to big-endian when not specified)
       const word = mapView.getUint16(mapIndex * 2);
-      if (word === 0) continue;
+
+      // Convention used in the code:
+      // - bit 15: horizontal flip
+      // - bits 13-14: rotation (0..3) representing 0/90/180/270 degrees
+      // - lower bits: stamp index
+      if (word === 0) continue; // index 0 treated as blank
+
       const hFlip = (word & 0x8000) !== 0;
       const rotation = (word >> 13) & 0x03;
-      
-      // BUG FIX: The stamp map uses index 0 for a blank stamp that is not in the
-      // tile data. Subtract 1 from the map's index to get the correct 0-based
-      // index for the packed tile data.
+
+      // The stored stamp index is 1-based (0 = blank). Subtract 1 to get 0-based.
+      // Also mask out the flag bits used above.
       let stampAddr = (word & 0x7FF) - 1;
-      
+
+      // For 32px stamps the address alignment may require masking off lower bits
       if (stampSize === 32) stampAddr &= ~0x03;
+
+      // Convert stamp address into base tile index (each stamp references multiple 8x8 tiles)
       const baseTileIndex = stampAddr * 4;
 
+      // Clear stamp image buffer
       stampImgData.data.fill(0);
+
+      // Fill the stamp image by drawing each sub-tile into the stamp image buffer.
       for (let sty = 0; sty < tilesPerDim; sty++) {
         for (let stx = 0; stx < tilesPerDim; stx++) {
-          const tileIndexInStamp = stx * tilesPerDim + sty; // FIXED vertical arrangement
+          const tileIndexInStamp = stx * tilesPerDim + sty;
           drawTileOntoImageData(stampImgData, baseTileIndex + tileIndexInStamp, tileData, palette, stx * 8, sty * 8);
         }
       }
+
+      // Put the composed stamp image into the temporary canvas
       stampCtx.putImageData(stampImgData, 0, 0);
 
+      // Destination coordinates on the main canvas
       const destX = mx * stampSize;
       const destY = my * stampSize;
       const centerX = destX + stampSize / 2;
       const centerY = destY + stampSize / 2;
 
+      // Save state, translate to stamp center, apply rotation/flip, draw, restore
       ctx.save();
       ctx.translate(centerX, centerY);
-      ctx.rotate(rotation * Math.PI / 2);
+
+      ctx.rotate(rotation * Math.PI / 2); // rotation * 90 degrees
+
+      // Horizontal flip if flagged
       if (hFlip) ctx.scale(-1, 1);
+
+      // Draw the stamp centered at the origin after transforms
       ctx.drawImage(stampCanvas, -stampSize / 2, -stampSize / 2);
+
       ctx.restore();
     }
-  }
+
+    currentStamp = batchEnd;
+    updateProgress(currentStamp, totalStamps);
+
+    if (currentStamp < totalStamps) {
+      // Schedule next batch
+      requestAnimationFrame(processBatch);
+    } else {
+      // Rendering complete
+      showProgress(false);
+      renderingInProgress = false;
+    }
+  };
+
+  // Start processing
+  requestAnimationFrame(processBatch);
 }
 
+/* -------------------------
+   Simple tile grid renderer
+   ------------------------- */
+/**
+ * renderTileGrid
+ * Draws all tiles sequentially in a fixed-width grid (32 tiles per row).
+ * Useful when no stamp map is provided: shows raw tile set layout.
+ */
 function renderTileGrid(data, palette) {
   const tileW = 8, tileH = 8;
   const bytesPerTile = 32;
-  const tilesPerRow = 32;
+  const tilesPerRow = 32; // fixed width for simple browsing
+
   const numTiles = Math.floor(data.length / bytesPerTile);
   if (numTiles === 0) {
+    // Nothing to draw — ensure canvas is valid but empty
     canvas.width = 1; canvas.height = 1;
     ctx.clearRect(0,0,1,1);
     return;
   }
+
+  // Compute full image size and create an ImageData buffer to paint into
   const imageW = tilesPerRow * tileW;
   const imageH = Math.ceil(numTiles / tilesPerRow) * tileH;
   canvas.width = imageW;
   canvas.height = imageH;
   const img = ctx.createImageData(imageW, imageH);
+
+  // Render each tile into the big ImageData then blit once for performance
   for (let t = 0; t < numTiles; t++) {
     const tileX = (t % tilesPerRow) * tileW;
     const tileY = Math.floor(t / tilesPerRow) * tileH;
