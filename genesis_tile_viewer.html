@@ -20,7 +20,9 @@
     /* Controls layout */
     .controls-container { display: flex; flex-wrap: wrap; gap: 40px; background-color: #f9f9f9; padding: 10px 20px; border-radius: 8px; margin-top: 10px;}
     .control-group h2 { font-size: 1rem; margin-top: 10px; margin-bottom: 5px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
-    
+    .btn { display:inline-block; margin-top:8px; padding:6px 10px; border-radius:6px; background:#1976d2; color:#fff; border:none; cursor:pointer; }
+    .btn:active { transform: translateY(1px); }
+
     /* Progress indicator */
     #progressBar { width: 100%; height: 20px; background: #e0e0e0; border-radius: 4px; margin-top: 10px; overflow: hidden; display: none; }
     #progressFill { height: 100%; background: #4CAF50; transition: width 0.2s; width: 0%; }
@@ -40,6 +42,7 @@
       <label>Palette file (.bin / .pal): <input id="filePalette" type="file" accept=".bin,.pal,.unc" /></label>
       <!-- Stamp map file: optional; when provided the viewer draws a stamp map rather than grid -->
       <label>Stamp map file (.bin / .unc): <input id="fileStampMap" type="file" accept=".bin,.unc" /></label>
+      <button id="btnExport" class="btn" title="Export current canvas to PNG">Export PNG</button>
     </div>
 
     <div class="control-group">
@@ -61,6 +64,10 @@
           <option value="32">32x32</option>
         </select>
       </label>
+
+      <!-- NEW: Debug option to show hex values instead of drawing stamps -->
+      <label><input id="settingDebugHex" type="checkbox" /> Show raw hex for each stamp (debug) — no flipping/rotation</label>
+
       <div class="hint">These settings are only used when a stamp map is loaded.</div>
     </div>
   </div>
@@ -86,6 +93,8 @@ const filePalette = document.getElementById('filePalette');
 const fileStampMap = document.getElementById('fileStampMap');
 const settingMapSize = document.getElementById('settingMapSize');
 const settingStampSize = document.getElementById('settingStampSize');
+const settingDebugHex = document.getElementById('settingDebugHex');
+const btnExport = document.getElementById('btnExport');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const palettePreview = document.getElementById('palettePreview');
@@ -132,6 +141,33 @@ fileStampMap.addEventListener('change', async (e) => {
 /* Changing stamp/map settings triggers a re-render */
 settingMapSize.addEventListener('change', renderIfReady);
 settingStampSize.addEventListener('change', renderIfReady);
+settingDebugHex.addEventListener('change', renderIfReady);
+
+/* Export button handler */
+btnExport.addEventListener('click', () => {
+  try {
+    // Use toBlob for better memory handling and to avoid dataURL size issues
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        alert('Unable to export image (canvas is empty).');
+        return;
+      }
+      const a = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      a.href = url;
+      const filename = `genesis-render-${new Date().toISOString().replace(/[:.]/g,'-')}.png`;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Revoke after a short timeout to ensure download started
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, 'image/png');
+  } catch (err) {
+    console.error('Export failed', err);
+    alert('Export failed: see console for details.');
+  }
+});
 
 /* -------------------------
    Palette parsing & preview
@@ -280,12 +316,15 @@ function drawTileOntoImageData(imgData, tileIndex, tileData, palette, targetX, t
 }
 
 /* -------------------------
-   Stamp map rendering (OPTIMIZED)
+   Stamp map rendering (OPTIMIZED + debug hex mode + delayed batches)
    ------------------------- */
 /**
  * renderStampMap
  * Interpret a stamp map file and draw stamps to the canvas progressively.
- * Uses requestAnimationFrame to render in batches, preventing browser freeze.
+ * When "Show raw hex" debug is enabled, write the 16-bit word as hex in each cell
+ * and skip flipping/rotation/tile composition.
+ *
+ * This version processes 100 stamps per batch and waits 250ms between batches.
  */
 async function renderStampMap(tileData, palette, stampMapData) {
   // Signal that we're starting a new render
@@ -305,18 +344,34 @@ async function renderStampMap(tileData, palette, stampMapData) {
   // Show progress bar
   showProgress(true);
 
-  // Temporary canvas used for composing a single stamp (so we can rotate/flip and draw)
-  const stampCanvas = document.createElement('canvas');
-  stampCanvas.width = stampCanvas.height = stampSize;
-  const stampCtx = stampCanvas.getContext('2d');
-  const stampImgData = stampCtx.createImageData(stampSize, stampSize);
+  // Debug mode: show hex values instead of composing/drawing stamps
+  const debugHex = settingDebugHex.checked;
 
   // Create a DataView to read 16-bit words from the provided stampMapData buffer
   const mapView = new DataView(stampMapData.buffer);
 
   const totalStamps = mapW * mapH;
-  const stampsPerBatch = 100; // Process 100 stamps per frame
+  const stampsPerBatch = 100; // process 100 stamps per batch
+  const interBatchDelayMs = 250; // 0.25 second delay between batches
   let currentStamp = 0;
+
+  // If we will compose stamps normally, prepare temporary stamp canvas
+  let stampCanvas = null, stampCtx = null, stampImgData = null;
+  if (!debugHex) {
+    stampCanvas = document.createElement('canvas');
+    stampCanvas.width = stampCanvas.height = stampSize;
+    stampCtx = stampCanvas.getContext('2d');
+    stampImgData = stampCtx.createImageData(stampSize, stampSize);
+  }
+
+  // Preconfigure text properties for debug mode
+  if (debugHex) {
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // Choose a font size that fits inside the stamp cell, with a minimum
+    const fontSize = Math.max(8, Math.floor(stampSize / 3));
+    ctx.font = `${fontSize}px monospace`;
+  }
 
   // Process stamps in batches
   const processBatch = () => {
@@ -336,9 +391,36 @@ async function renderStampMap(tileData, palette, stampMapData) {
       // Each map entry is 2 bytes (Uint16). Skip if out of bounds.
       if ((mapIndex * 2 + 1) >= mapView.byteLength) continue;
 
-      // Read word (big-endian or platform endianness? DataView defaults to big-endian when not specified)
+      // Read word (big-endian by default)
       const word = mapView.getUint16(mapIndex * 2);
 
+      // Destination coordinates on the main canvas
+      const destX = mx * stampSize;
+      const destY = my * stampSize;
+
+      if (debugHex) {
+        // Draw a light background for the cell to make the text readable
+        if (word === 0) {
+          ctx.fillStyle = '#f5f5f5';
+        } else {
+          ctx.fillStyle = '#e8e8ff';
+        }
+        ctx.fillRect(destX, destY, stampSize, stampSize);
+
+        // draw border
+        ctx.strokeStyle = '#bbb';
+        ctx.strokeRect(destX + 0.5, destY + 0.5, stampSize - 1, stampSize - 1);
+
+        // Format hex string '0xFFFF'
+        const hex = '0x' + word.toString(16).toUpperCase().padStart(4, '0');
+
+        // Color the text darker if background is light
+        ctx.fillStyle = '#111';
+        ctx.fillText(hex, destX + stampSize / 2, destY + stampSize / 2);
+        continue; // skip composing tiles / transforms
+      }
+
+      // Normal (non-debug) rendering path:
       // Convention used in the code:
       // - bit 15: horizontal flip
       // - bits 13-14: rotation (0..3) representing 0/90/180/270 degrees
@@ -373,8 +455,6 @@ async function renderStampMap(tileData, palette, stampMapData) {
       stampCtx.putImageData(stampImgData, 0, 0);
 
       // Destination coordinates on the main canvas
-      const destX = mx * stampSize;
-      const destY = my * stampSize;
       const centerX = destX + stampSize / 2;
       const centerY = destY + stampSize / 2;
 
@@ -397,8 +477,10 @@ async function renderStampMap(tileData, palette, stampMapData) {
     updateProgress(currentStamp, totalStamps);
 
     if (currentStamp < totalStamps) {
-      // Schedule next batch
-      requestAnimationFrame(processBatch);
+      // Delay between batches to be gentle on the browser (250 ms)
+      setTimeout(() => {
+        if (!cancelRendering) requestAnimationFrame(processBatch);
+      }, interBatchDelayMs);
     } else {
       // Rendering complete
       showProgress(false);
