@@ -65,7 +65,7 @@
         </select>
       </label>
 
-      <!-- NEW: Debug option to show hex values instead of drawing stamps -->
+      <!-- Debug option to show hex values instead of drawing stamps -->
       <label><input id="settingDebugHex" type="checkbox" /> Show raw hex for each stamp (debug) — no flipping/rotation</label>
 
       <div class="hint">These settings are only used when a stamp map is loaded.</div>
@@ -324,7 +324,13 @@ function drawTileOntoImageData(imgData, tileIndex, tileData, palette, targetX, t
  * When "Show raw hex" debug is enabled, write the 16-bit word as hex in each cell
  * and skip flipping/rotation/tile composition.
  *
- * This version processes 100 stamps per batch and waits 250ms between batches.
+ * Bit layout enforced here:  HRR0 0SSS SSSS SSSS
+ * - bit 15: H (horizontal flip)
+ * - bits 14-13: RR (rotation: 00=0°, 01=90°, 10=180°, 11=270°)
+ * - bits 12-11: reserved/zero
+ * - bits 10-0: S (11-bit stamp ID)
+ *
+ * We explicitly read big-endian words and apply masks/shifts to match that format.
  */
 async function renderStampMap(tileData, palette, stampMapData) {
   // Signal that we're starting a new render
@@ -373,6 +379,11 @@ async function renderStampMap(tileData, palette, stampMapData) {
     ctx.font = `${fontSize}px monospace`;
   }
 
+  // Masks for the HRR0 0SSS... format
+  const H_MASK = 0x8000;      // bit 15
+  const ROT_MASK = 0x6000;    // bits 14-13
+  const STAMP_MASK = 0x07FF;  // bits 10-0
+
   // Process stamps in batches
   const processBatch = () => {
     if (cancelRendering) {
@@ -391,8 +402,8 @@ async function renderStampMap(tileData, palette, stampMapData) {
       // Each map entry is 2 bytes (Uint16). Skip if out of bounds.
       if ((mapIndex * 2 + 1) >= mapView.byteLength) continue;
 
-      // Read word (big-endian by default)
-      const word = mapView.getUint16(mapIndex * 2);
+      // Read word as big-endian explicitly (DataView default is big-endian, but pass false for clarity)
+      const word = mapView.getUint16(mapIndex * 2, false);
 
       // Destination coordinates on the main canvas
       const destX = mx * stampSize;
@@ -421,23 +432,26 @@ async function renderStampMap(tileData, palette, stampMapData) {
       }
 
       // Normal (non-debug) rendering path:
-      // Convention used in the code:
-      // - bit 15: horizontal flip
-      // - bits 13-14: rotation (0..3) representing 0/90/180/270 degrees
-      // - lower bits: stamp index
-      if (word === 0) continue; // index 0 treated as blank
+      // - H bit (bit15) = horizontal flip (applied AFTER rotation)
+      // - RR bits (bits14-13) = rotation (00=0°, 01=90°, 10=180°, 11=270°)
+      // - lower 11 bits = stamp index (1-based; 0 means blank)
 
-      const hFlip = (word & 0x8000) !== 0;
-      const rotation = (word >> 13) & 0x03;
+      const hFlip = (word & H_MASK) !== 0;
+      const rotation = (word & ROT_MASK) >> 13; // yields 0..3 matching 0/90/180/270
 
-      // The stored stamp index is 1-based (0 = blank). Subtract 1 to get 0-based.
-      // Also mask out the flag bits used above.
-      let stampAddr = (word & 0x7FF) - 1;
+      // TWO-STEP: mask index first, check for zero (blank), then convert to 0-based
+      const stampIndex = word & STAMP_MASK; // bits 10..0
+      if (stampIndex === 0) continue;       // masked-zero -> blank cell
+      let stampAddr = stampIndex - 1;       // safe to subtract now
 
       // For 32px stamps the address alignment may require masking off lower bits
+      // (user note: last 2 bits are ignored with 32x32 stamps; keep multiples-of-4 behavior)
       if (stampSize === 32) stampAddr &= ~0x03;
 
       // Convert stamp address into base tile index (each stamp references multiple 8x8 tiles)
+      // Historically stamps referenced 4 tiles (2x2) at 16px size; keep the same scaling logic.
+      // baseTileIndex = stampAddr * (tilesPerDim * tilesPerDim) would also be correct
+      // if your stamp indexing is that a stamp ID points to a block of tiles sized stampSize×stampSize.
       const baseTileIndex = stampAddr * 4;
 
       // Clear stamp image buffer
@@ -454,18 +468,26 @@ async function renderStampMap(tileData, palette, stampMapData) {
       // Put the composed stamp image into the temporary canvas
       stampCtx.putImageData(stampImgData, 0, 0);
 
-      // Destination coordinates on the main canvas
+      // Destination coordinates on the main canvas (stamp center)
       const centerX = destX + stampSize / 2;
       const centerY = destY + stampSize / 2;
 
-      // Save state, translate to stamp center, apply rotation/flip, draw, restore
+      // Save state, translate to stamp center, apply rotation then flip, draw, restore
       ctx.save();
       ctx.translate(centerX, centerY);
 
-      ctx.rotate(rotation * Math.PI / 2); // rotation * 90 degrees
+      // Sega CD rotates counter-clockwise
+      ctx.rotate(-rotation * Math.PI / 2);
 
-      // Horizontal flip if flagged
-      if (hFlip) ctx.scale(-1, 1);
+      // Apply flip along the stamp's logical X-axis after rotation
+      // 0°/180°: flip horizontally; 90°/270°: flip vertically
+      if (hFlip) {
+        if (rotation % 2 === 0) {
+          ctx.scale(-1, 1);
+        } else {
+          ctx.scale(1, -1);
+        }
+      }
 
       // Draw the stamp centered at the origin after transforms
       ctx.drawImage(stampCanvas, -stampSize / 2, -stampSize / 2);
