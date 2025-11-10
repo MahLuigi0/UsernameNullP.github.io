@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Genesis Tile Viewer & Stamp Map Editor</title>
+  <title>Genesis Tile Viewer &amp; Stamp Map Editor</title>
   <style>
     /* Page layout and typography */
     body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; padding: 18px; max-width: 1200px; margin: auto; }
@@ -39,15 +39,15 @@
   </style>
 </head>
 <body>
-  <h1>Genesis Tile Viewer & Stamp Map Editor</h1>
+  <h1>Genesis Tile Viewer &amp; Stamp Map Editor</h1>
 
   <div class="controls-container">
     <!-- Input Files -->
     <div class="control-group">
       <h2>Input Files</h2>
-      <label>Tile file (.bin / .unc): <input id="fileTiles" type="file" accept=".bin,.unc" /></label>
-      <label>Palette file (.bin / .pal): <input id="filePalette" type="file" accept=".bin,.pal,.unc" /></label>
-      <label>Stamp map file (.bin / .unc): <input id="fileStampMap" type="file" accept=".bin,.unc" /></label>
+      <label>Tile file (.bin / .unc): <input id="fileTiles" type="file" accept=".bin,.unc"></label>
+      <label>Palette file (.bin / .pal): <input id="filePalette" type="file" accept=".bin,.pal,.unc"></label>
+      <label>Stamp map file (.bin / .unc): <input id="fileStampMap" type="file" accept=".bin,.unc"></label>
       <button id="btnExport" class="btn" title="Export current canvas to PNG">Export PNG</button>
     </div>
 
@@ -58,42 +58,42 @@
         <select id="settingMapSize">
           <option value="16x16">16x16 stamps (256x256px)</option>
           <option value="8x8">8x8 stamps (256x256px)</option>
-          <option value="256x256" selected>256x256 stamps (4096x4096px)</option>
+          <option value="256x256" selected="">256x256 stamps (4096x4096px)</option>
           <option value="128x128">128x128 stamps (4096x4096px)</option>
         </select>
       </label>
       <label>Stamp Size (in pixels):
         <select id="settingStampSize">
-          <option value="16" selected>16x16</option>
+          <option value="16" selected="">16x16</option>
           <option value="32">32x32</option>
         </select>
       </label>
-      <label><input id="settingDebugHex" type="checkbox" /> Show raw hex for each stamp (debug)</label>
+      <label><input id="settingDebugHex" type="checkbox"> Show raw hex for each stamp (debug)</label>
       <div class="hint">These settings are only used when a stamp map is loaded.</div>
     </div>
 
     <!-- Mode & Edit Tools -->
     <div class="control-group">
       <h2>Mode</h2>
-      <label><input id="settingEditMode" type="checkbox" /> Enable Edit Mode</label>
+      <label><input id="settingEditMode" type="checkbox"> Enable Edit Mode</label>
       <div class="hint">In edit mode, <span class="edit-instruction">click cells to place stamps</span> and <span class="edit-instruction">right-click to clear</span>.</div>
       
-      <div id="editTools">
+      <div id="editTools" style="display: block;">
         <h2 style="margin-top: 15px;">Active Stamp</h2>
-        <label>H-Flip: <input type="checkbox" id="editHFlip" /></label>
+        <label>H-Flip: <input type="checkbox" id="editHFlip"></label>
         <label>Rotation: 
           <select id="editRotation">
-            <option value="0" selected>0°</option>
+            <option value="0" selected="">0°</option>
             <option value="1">90°</option>
             <option value="2">180°</option>
             <option value="3">270°</option>
           </select>
         </label>
         <canvas id="activeStampPreview" width="64" height="64"></canvas>
-        <div id="activeStampInfo" style="margin-top: 5px; font-size: 0.85rem; color: #666;"></div>
+        <div id="activeStampInfo" style="margin-top: 5px; font-size: 0.85rem; color: #666;">Stamp 5 | H-Flip: false | Rotation: 0°</div>
         
         <h2 style="margin-top: 15px;">Stamp Palette</h2>
-        <canvas id="stampSelector"></canvas>
+        <canvas id="stampSelector" width="512" height="32" style="display: block;"></canvas>
         
         <div style="margin-top: 12px;">
           <button id="btnNewMap" class="btn">New Empty Map</button>
@@ -107,14 +107,14 @@
   <div class="hint">Tiles are assumed 8×8, 4bpp (32 bytes per tile). Without a map, tiles are shown in a 32-wide grid.</div>
 
   <!-- Progress indicators -->
-  <div id="progressBar"><div id="progressFill"></div></div>
-  <div id="progressText"></div>
+  <div id="progressBar" style="display: none;"><div id="progressFill" style="width: 100%;"></div></div>
+  <div id="progressText" style="display: none;">Rendering: 65536 / 65536 stamps (100%)</div>
 
   <!-- Canvas where the tile grid or stamp map is drawn -->
-  <canvas id="canvas"></canvas>
+  <canvas id="canvas" width="256" height="256" style="cursor: crosshair;"></canvas>
 
   <!-- Palette preview -->
-  <div id="palettePreview"></div>
+  <div id="palettePreview"><div class="sw" title="#0 rgb(0,0,0)" style="background-color: rgb(0, 0, 0);"></div><div class="sw" title="#1 rgb(238,238,238)" style="background-color: rgb(238, 238, 238);"></div><div class="sw" title="#2 rgb(102,102,238)" style="background-color: rgb(102, 102, 238);"></div><div class="sw" title="#3 rgb(0,34,238)" style="background-color: rgb(0, 34, 238);"></div><div class="sw" title="#4 rgb(0,0,136)" style="background-color: rgb(0, 0, 136);"></div><div class="sw" title="#5 rgb(238,0,0)" style="background-color: rgb(238, 0, 0);"></div><div class="sw" title="#6 rgb(136,0,0)" style="background-color: rgb(136, 0, 0);"></div><div class="sw" title="#7 rgb(238,170,0)" style="background-color: rgb(238, 170, 0);"></div><div class="sw" title="#8 rgb(238,136,0)" style="background-color: rgb(238, 136, 0);"></div><div class="sw" title="#9 rgb(238,170,136)" style="background-color: rgb(238, 170, 136);"></div><div class="sw" title="#10 rgb(170,102,68)" style="background-color: rgb(170, 102, 68);"></div><div class="sw" title="#11 rgb(204,204,238)" style="background-color: rgb(204, 204, 238);"></div><div class="sw" title="#12 rgb(170,170,204)" style="background-color: rgb(170, 170, 204);"></div><div class="sw" title="#13 rgb(102,102,136)" style="background-color: rgb(102, 102, 136);"></div><div class="sw" title="#14 rgb(0,0,0)" style="background-color: rgb(0, 0, 0);"></div><div class="sw" title="#15 rgb(0,136,0)" style="background-color: rgb(0, 136, 0);"></div><div class="sw" title="#16 rgb(0,0,0)" style="background-color: rgb(0, 0, 0);"></div><div class="sw" title="#17 rgb(238,238,238)" style="background-color: rgb(238, 238, 238);"></div><div class="sw" title="#18 rgb(34,102,238)" style="background-color: rgb(34, 102, 238);"></div><div class="sw" title="#19 rgb(102,136,170)" style="background-color: rgb(102, 136, 170);"></div><div class="sw" title="#20 rgb(102,136,238)" style="background-color: rgb(102, 136, 238);"></div><div class="sw" title="#21 rgb(238,238,0)" style="background-color: rgb(238, 238, 0);"></div><div class="sw" title="#22 rgb(136,136,0)" style="background-color: rgb(136, 136, 0);"></div><div class="sw" title="#23 rgb(170,170,170)" style="background-color: rgb(170, 170, 170);"></div><div class="sw" title="#24 rgb(136,136,136)" style="background-color: rgb(136, 136, 136);"></div><div class="sw" title="#25 rgb(68,68,68)" style="background-color: rgb(68, 68, 68);"></div><div class="sw" title="#26 rgb(102,102,102)" style="background-color: rgb(102, 102, 102);"></div><div class="sw" title="#27 rgb(102,136,238)" style="background-color: rgb(102, 136, 238);"></div><div class="sw" title="#28 rgb(238,238,0)" style="background-color: rgb(238, 238, 0);"></div><div class="sw" title="#29 rgb(136,136,0)" style="background-color: rgb(136, 136, 0);"></div><div class="sw" title="#30 rgb(136,170,238)" style="background-color: rgb(136, 170, 238);"></div><div class="sw" title="#31 rgb(170,204,238)" style="background-color: rgb(170, 204, 238);"></div></div>
 
 <script>
 /* -------------------------
@@ -349,7 +349,7 @@ function renderStampSelector() {
     const y = row * stampSize;
     
     // Use first logical ID of each physical stamp's group
-    const logicalID = (stampSize === 32) ? (i * 4 + 1) : (i + 1);
+    const logicalID = (stampSize === 32) ? (i * 4 + 4) : (i + 4);
     
     renderSingleStamp(stampSelectorCtx, logicalID, x, y, stampSize, tileData, palette);
     
@@ -709,7 +709,7 @@ stampSelector.addEventListener('click', (e) => {
   
   if (physicalIndex < maxPhysicalStamps) {
     // Set activeStampIndex to the logical ID for this physical stamp
-    activeStampIndex = (stampSize === 32) ? (physicalIndex * 4 + 1) : (physicalIndex + 1);
+    activeStampIndex = (stampSize === 32) ? (physicalIndex * 4 + 4) : (physicalIndex + 4);
     updateActiveStampPreview();
     renderStampSelector();
   }
@@ -741,7 +741,7 @@ canvas.addEventListener('click', (e) => {
   // Convert logical ID to physical ID for saving
   let stampIndexToWrite = activeStampIndex;
   if (stampSize === 32) {
-    stampIndexToWrite = ((activeStampIndex - 1) & ~0x03) + 1;
+    stampIndexToWrite = ((activeStampIndex - 1) & ~0x03) + 4;
   }
   
   const word = ((activeHFlip ? 1 : 0) << 15) | ((activeRotation & 0x03) << 13) | (stampIndexToWrite & 0x07FF);
@@ -889,7 +889,7 @@ document.addEventListener('keydown', (e) => {
     
     if (newPhysicalIndex !== currentPhysicalIndex) {
       activeStampIndex = (stampSize === 32) ? 
-        (newPhysicalIndex * 4 + 1) : (newPhysicalIndex + 1);
+        (newPhysicalIndex * 4 + 4) : (newPhysicalIndex + 4);
       updateActiveStampPreview();
       renderStampSelector();
     }
