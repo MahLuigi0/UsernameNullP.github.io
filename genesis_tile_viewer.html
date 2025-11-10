@@ -36,6 +36,43 @@
     #editTools { display: none; }
     #activeStampPreview { border:1px solid #444; image-rendering: pixelated; margin-top: 8px; }
     .edit-instruction { color: #1976d2; font-weight: bold; }
+
+    /* Assembly modal */
+    .modal-backdrop {
+      position: fixed;
+      left: 0; top: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    .modal {
+      background: white;
+      width: min(1100px, 95%);
+      max-height: 90%;
+      border-radius: 8px;
+      padding: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+      display: flex;
+      flex-direction: column;
+    }
+    #asmText {
+      width: 100%;
+      height: 60vh;
+      font-family: monospace;
+      font-size: 12px;
+      white-space: pre;
+      overflow: auto;
+      margin-top: 8px;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      resize: vertical;
+    }
+    .modal-actions { margin-top: 8px; display:flex; gap:8px; align-items:center; }
+    .modal-actions .small { font-size: 0.9rem; color: #555; }
+    .toggle { margin-left: 8px; }
   </style>
 </head>
 <body>
@@ -102,6 +139,16 @@
         </div>
       </div>
     </div>
+
+    <!-- Assembly / Export -->
+    <div class="control-group">
+      <h2>Map Export</h2>
+      <button id="btnView68k" class="btn" title="View the current stamp map as 68K words">View as 68K assembly</button>
+      <div style="margin-top:8px;">
+        <label><input type="checkbox" id="optIncludeComments" checked> Include row comments ( ; row N )</label>
+        <div class="hint">Generates lines like <code>dc.w $1234, $0000, $00FF</code> in Motorola 68K style.</div>
+      </div>
+    </div>
   </div>
 
   <div class="hint">Tiles are assumed 8×8, 4bpp (32 bytes per tile). Without a map, tiles are shown in a 32-wide grid.</div>
@@ -115,6 +162,29 @@
 
   <!-- Palette preview -->
   <div id="palettePreview"></div>
+
+  <!-- Assembly modal -->
+  <div id="asmModalBackdrop" class="modal-backdrop" role="dialog" aria-hidden="true">
+    <div class="modal" role="document">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <strong>Stamp Map — 68K Assembly View</strong>
+        <div>
+          <button id="btnAsmCopy" class="btn">Copy</button>
+          <button id="btnAsmDownload" class="btn btn-success">Download .asm</button>
+          <button id="btnAsmClose" class="btn btn-danger">Close</button>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <label class="small"><input id="optLabelAtTop" type="checkbox" checked> Add label <code>stamp_map:</code> at top</label>
+        <label class="small toggle"> | Words per line: <input id="optWordsPerLine" type="number" value="0" min="0" style="width:70px; margin-left:6px;"> (0 = map width)</label>
+        <div style="flex:1"></div>
+        <div class="small">Map source: <span id="asmMapSource">—</span></div>
+      </div>
+
+      <textarea id="asmText" readonly></textarea>
+    </div>
+  </div>
 
 <script>
 /* -------------------------
@@ -146,6 +216,18 @@ const stampSelectorCtx = stampSelector.getContext('2d');
 const btnNewMap = document.getElementById('btnNewMap');
 const btnClearMap = document.getElementById('btnClearMap');
 const btnSaveMap = document.getElementById('btnSaveMap');
+
+// Assembly UI
+const btnView68k = document.getElementById('btnView68k');
+const asmModalBackdrop = document.getElementById('asmModalBackdrop');
+const asmText = document.getElementById('asmText');
+const btnAsmClose = document.getElementById('btnAsmClose');
+const btnAsmCopy = document.getElementById('btnAsmCopy');
+const btnAsmDownload = document.getElementById('btnAsmDownload');
+const optIncludeComments = document.getElementById('optIncludeComments');
+const optLabelAtTop = document.getElementById('optLabelAtTop');
+const optWordsPerLine = document.getElementById('optWordsPerLine');
+const asmMapSource = document.getElementById('asmMapSource');
 
 // State
 let tileData = null;
@@ -911,6 +993,138 @@ document.addEventListener('keydown', (e) => {
     updateActiveStampPreview();
   }
 });
+
+/* -------------------------
+   68K Assembly generation & UI
+   ------------------------- */
+function mapSourceForAssembly() {
+  return (isEditMode && editableStampMapData) ? editableStampMapData : stampMapData;
+}
+
+function generate68kAssembly(mapUint8, mapW, mapH, options = {}) {
+  // mapUint8 is a Uint8Array holding big-endian words (word 0 at byte 0)
+  const dv = new DataView(mapUint8.buffer, mapUint8.byteOffset, mapUint8.byteLength);
+  const includeComments = !!options.includeComments;
+  const labelAtTop = !!options.labelAtTop;
+  let wordsPerLine = parseInt(options.wordsPerLine || 0, 10);
+  if (!wordsPerLine || wordsPerLine <= 0) wordsPerLine = mapW; // default to map width
+
+  const total = mapW * mapH;
+  const lines = [];
+
+  if (labelAtTop) lines.push('stamp_map:');
+
+  // Iterate row-major and emit groups of wordsPerLine per line (by default, one assembly line per map row)
+  for (let row = 0; row < mapH; row++) {
+    let rowWords = [];
+    for (let col = 0; col < mapW; col++) {
+      const idx = row * mapW + col;
+      const byteOff = idx * 2;
+      let w = 0;
+      if ((byteOff + 1) < dv.byteLength) {
+        w = dv.getUint16(byteOff, false); // big-endian (Motorola)
+      } else {
+        w = 0;
+      }
+      rowWords.push('$' + w.toString(16).toUpperCase().padStart(4, '0'));
+    }
+
+    // If wordsPerLine equals mapW, just emit one dc.w line per row
+    if (wordsPerLine === mapW) {
+      const comment = includeComments ? ` ; row ${row}` : '';
+      lines.push('  dc.w ' + rowWords.join(', ') + comment);
+    } else {
+      // split rowWords into chunks of wordsPerLine
+      for (let i = 0; i < rowWords.length; i += wordsPerLine) {
+        const chunk = rowWords.slice(i, i + wordsPerLine);
+        const comment = includeComments ? ` ; row ${row} cols ${i}-${Math.min(rowWords.length-1,i+wordsPerLine-1)}` : '';
+        lines.push('  dc.w ' + chunk.join(', ') + comment);
+      }
+    }
+  }
+
+  return lines.join('\n');
+}
+
+function openAssemblyModal(text, mapLabel) {
+  asmText.value = text;
+  asmMapSource.textContent = mapLabel || 'ram';
+  asmModalBackdrop.style.display = 'flex';
+  asmModalBackdrop.setAttribute('aria-hidden', 'false');
+  asmText.scrollTop = 0;
+}
+
+function closeAssemblyModal() {
+  asmModalBackdrop.style.display = 'none';
+  asmModalBackdrop.setAttribute('aria-hidden', 'true');
+}
+
+btnView68k.addEventListener('click', () => {
+  const map = mapSourceForAssembly();
+  if (!map) {
+    alert('No stamp map loaded. Load a map or create one in edit mode first.');
+    return;
+  }
+
+  const [mapW, mapH] = settingMapSize.value.split('x').map(Number);
+  const includeComments = optIncludeComments.checked;
+  const labelAtTop = optLabelAtTop.checked;
+  const wordsPerLine = parseInt(optWordsPerLine.value || '0', 10);
+
+  // Generate assembly text
+  try {
+    const asm = generate68kAssembly(map, mapW, mapH, {
+      includeComments,
+      labelAtTop,
+      wordsPerLine
+    });
+    openAssemblyModal(asm, (isEditMode && editableStampMapData) ? 'editable map' : 'loaded map');
+  } catch (err) {
+    console.error('Assembly generation failed', err);
+    alert('Failed to generate assembly: see console.');
+  }
+});
+
+btnAsmClose.addEventListener('click', closeAssemblyModal);
+
+// copy to clipboard
+btnAsmCopy.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(asmText.value);
+    btnAsmCopy.textContent = 'Copied ✓';
+    setTimeout(() => btnAsmCopy.textContent = 'Copy', 1200);
+  } catch (err) {
+    console.error('Copy failed', err);
+    alert('Copy failed — your browser may block clipboard writes.');
+  }
+});
+
+// download as .asm
+btnAsmDownload.addEventListener('click', () => {
+  const text = asmText.value;
+  if (!text) return;
+  const blob = new Blob([text], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const nameSuffix = (isEditMode && editableStampMapData) ? 'editable' : 'loaded';
+  const filename = `stamp_map_${nameSuffix}_${new Date().toISOString().replace(/[:.]/g,'-')}.asm`;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+
+/* Close modal when clicking backdrop outside the modal */
+asmModalBackdrop.addEventListener('click', (ev) => {
+  if (ev.target === asmModalBackdrop) closeAssemblyModal();
+});
+
+/* -------------------------
+   End of assembly additions
+   ------------------------- */
+
 </script>
 </body>
 </html>
