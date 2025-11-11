@@ -16,6 +16,7 @@
     /* Palette preview swatches */
     #palettePreview { margin-top: 10px; display: grid; grid-template-columns: repeat(16, 20px); /* 16 swatches per row */ grid-auto-rows: 20px; gap: 0; /* no gap between swatches */ width: fit-content; }
     .sw { width: 20px; height: 20px; display: block; margin: 0; border: none; box-sizing: border-box; }
+    .sw.selected { outline: 2px solid #ff0; }
 
     /* Controls layout */
     .controls-container { display: flex; flex-wrap: wrap; gap: 20px; background-color: #f9f9f9; padding: 10px 20px; border-radius: 8px; margin-top: 10px;}
@@ -86,8 +87,9 @@
       <label>Stamp map file (.bin / .unc): <input id="fileStampMap" type="file" accept=".bin,.unc"></label>
       <button id="btnExport" class="btn" title="Export current canvas to PNG">Export PNG</button>
 
-      <!-- Moved: Palette preview goes in this blank spot underneath input file options -->
+      <!-- Palette preview and row selector -->
       <div id="palettePreview"></div>
+      <label id="paletteRowContainer" style="display:none; margin-top:8px;">Palette Row: <select id="paletteRowSelect"></select></label>
     </div>
 
     <!-- Map Settings -->
@@ -198,6 +200,8 @@ const btnExport = document.getElementById('btnExport');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const palettePreview = document.getElementById('palettePreview');
+const paletteRowContainer = document.getElementById('paletteRowContainer');
+const paletteRowSelect = document.getElementById('paletteRowSelect');
 const progressBar = document.getElementById('progressBar');
 const progressFill = document.getElementById('progressFill');
 const progressText = document.getElementById('progressText');
@@ -239,6 +243,7 @@ let isEditMode = false;
 let activeStampIndex = 1;
 let activeHFlip = false;
 let activeRotation = 0;
+let paletteRow = 0; // <-- selected palette row (0-based)
 
 function sanitizeLabel(name) {
   if (!name) return 'stamp_map';
@@ -264,6 +269,7 @@ filePalette.addEventListener('change', async (e) => {
   const f = e.target.files[0];
   if (!f) return;
   paletteData = new Uint8Array(await f.arrayBuffer());
+  paletteRow = 0; // reset to first row
   renderIfReady();
   if (isEditMode) {
     renderStampSelector();
@@ -327,7 +333,10 @@ function parsePaletteFromData(pData) {
 
 function showPalettePreview(palette) {
   palettePreview.innerHTML = '';
-  if (!palette) return;
+  if (!palette) {
+    paletteRowContainer.style.display = 'none';
+    return;
+  }
   const max = Math.min(palette.length, 256);
 
   // Ensure grid columns match the swatch size if you ever change .sw dimensions
@@ -336,15 +345,42 @@ function showPalettePreview(palette) {
   palettePreview.style.gridTemplateColumns = `repeat(16, ${swSize}px)`;
   palettePreview.style.gridAutoRows = `${swSize}px`;
 
+  // Calculate number of rows and populate row selector if needed
+  const rows = Math.ceil(max / 16);
+  if (rows > 1) {
+    paletteRowContainer.style.display = 'block';
+    paletteRowSelect.innerHTML = '';
+    for (let r = 0; r < rows; r++) {
+      const opt = document.createElement('option');
+      opt.value = r;
+      opt.textContent = `Row ${r} (palette indexes ${r*16}–${Math.min((r+1)*16-1, max-1)})`;
+      paletteRowSelect.appendChild(opt);
+    }
+    paletteRowSelect.value = String(paletteRow);
+  } else {
+    paletteRowContainer.style.display = 'none';
+  }
+
   for (let i = 0; i < max; i++) {
     const p = palette[i];
     const div = document.createElement('div');
     div.className = 'sw';
     div.title = `#${i} rgb(${p.r},${p.g},${p.b})`;
     div.style.backgroundColor = `rgb(${p.r},${p.g},${p.b})`;
+    // Highlight the swatches in the selected row
+    const thisRow = Math.floor(i / 16);
+    if (thisRow === paletteRow) div.classList.add('selected');
     palettePreview.appendChild(div);
   }
 }
+
+paletteRowSelect.addEventListener('change', (e) => {
+  paletteRow = parseInt(e.target.value, 10) || 0;
+  // Refresh palette preview highlighting and re-render view
+  const palette = paletteData ? parsePaletteFromData(paletteData) : null;
+  showPalettePreview(palette);
+  renderIfReady();
+});
 
 /* -------------------------
    Progress display helpers
@@ -717,8 +753,10 @@ function drawTileOntoImageData(imgData, tileIndex, tileData, palette, targetX, t
 
       let R = 0, G = 0, B = 0;
       if (pixelVal !== 0) {
-        if (palette && pixelVal < palette.length) {
-          const pcol = palette[pixelVal];
+        // Use palette row offset when available. Genesis palettes are usually organized as rows of 16 colors.
+        const paletteIndex = paletteRow * 16 + pixelVal;
+        if (palette && paletteIndex < palette.length) {
+          const pcol = palette[paletteIndex];
           R = pcol.r; G = pcol.g; B = pcol.b;
         } else {
           const g = Math.round((pixelVal / 15) * 255);
