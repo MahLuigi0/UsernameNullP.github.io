@@ -14,9 +14,8 @@
     #stampSelector { border:1px solid #444; cursor:pointer; max-width: 100%; image-rendering: pixelated; }
 
     /* Palette preview swatches */
-    #palettePreview { margin-top:10px; white-space:nowrap; }
-    .sw { width:20px; height:20px; display:inline-block; margin:2px; border:1px solid #222; }
-    .hint { color:#666; font-size:0.9rem; margin-top:8px; }
+    #palettePreview { margin-top: 10px; display: grid; grid-template-columns: repeat(16, 20px); /* 16 swatches per row */ grid-auto-rows: 20px; gap: 0; /* no gap between swatches */ width: fit-content; }
+    .sw { width: 20px; height: 20px; display: block; margin: 0; border: none; box-sizing: border-box; }
 
     /* Controls layout */
     .controls-container { display: flex; flex-wrap: wrap; gap: 20px; background-color: #f9f9f9; padding: 10px 20px; border-radius: 8px; margin-top: 10px;}
@@ -320,6 +319,13 @@ function showPalettePreview(palette) {
   palettePreview.innerHTML = '';
   if (!palette) return;
   const max = Math.min(palette.length, 256);
+
+  // Ensure grid columns match the swatch size if you ever change .sw dimensions
+  // (keeps layout consistent)
+  const swSize = 20;
+  palettePreview.style.gridTemplateColumns = `repeat(16, ${swSize}px)`;
+  palettePreview.style.gridAutoRows = `${swSize}px`;
+
   for (let i = 0; i < max; i++) {
     const p = palette[i];
     const div = document.createElement('div');
