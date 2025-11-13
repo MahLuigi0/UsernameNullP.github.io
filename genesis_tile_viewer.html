@@ -73,6 +73,9 @@
     .modal-actions { margin-top: 8px; display:flex; gap:8px; align-items:center; }
     .modal-actions .small { font-size: 0.9rem; color: #555; }
     .toggle { margin-left: 8px; }
+
+    /* Small hint next to render button */
+    #renderHint { margin-left: 10px; font-size: 0.85rem; color: #d35400; display: none; vertical-align: middle; }
   </style>
 </head>
 <body>
@@ -85,7 +88,9 @@
       <label>Tile file (.bin / .unc): <input id="fileTiles" type="file" accept=".bin,.unc"></label>
       <label>Palette file (.bin / .pal): <input id="filePalette" type="file" accept=".bin,.pal,.unc"></label>
       <label>Stamp map file (.bin / .unc): <input id="fileStampMap" type="file" accept=".bin,.unc"></label>
-      <button id="btnExport" class="btn" title="Export current canvas to PNG">Export PNG</button>
+      <div style="margin-top:8px;">
+        <button id="btnExport" class="btn" title="Export current canvas to PNG">Export PNG</button>
+      </div>
 
       <!-- Palette preview and row selector -->
       <div id="palettePreview"></div>
@@ -109,7 +114,11 @@
           <option value="32">32x32</option>
         </select>
       </label>
-      <div class="hint">These settings are only used when a stamp map is loaded.</div>
+
+      <div style="margin-top:8px;">
+        <button id="btnRenderMap" class="btn" title="Render the loaded stamp map" disabled>Render Stamp Map</button>
+      </div>
+
     </div>
 
     <!-- Mode & Edit Tools -->
@@ -130,7 +139,7 @@
           </select>
         </label>
         <canvas id="activeStampPreview" width="64" height="64"></canvas>
-        <div id="activeStampInfo" style="margin-top: 5px; font-size: 0.85rem; color: #666;">Stamp 5 | H-Flip: false | Rotation: 0°</div>
+        <div id="activeStampInfo" style="margin-top: 5px; font-size: 0.85rem; color: #666;">Stamp 0 | H-Flip: false | Rotation: 0°</div>
         
         <h2 style="margin-top: 15px;">Stamp Palette</h2>
         <canvas id="stampSelector" width="512" height="32" style="display: block;"></canvas>
@@ -197,6 +206,8 @@ const settingMapSize = document.getElementById('settingMapSize');
 const settingStampSize = document.getElementById('settingStampSize');
 const settingEditMode = document.getElementById('settingEditMode');
 const btnExport = document.getElementById('btnExport');
+const btnRenderMap = document.getElementById('btnRenderMap');
+const renderHint = document.getElementById('renderHint');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const palettePreview = document.getElementById('palettePreview');
@@ -245,12 +256,55 @@ let activeHFlip = false;
 let activeRotation = 0;
 let paletteRow = 0; // <-- selected palette row (0-based)
 
+// New state for "don't auto-update rendered map"
+let stampMapDisplayed = false;        // true when a stamp map rendering is currently shown on canvas
+let lastRenderedConfig = null;        // snapshot of config used to produce the displayed render
+let renderDirty = false;              // true when options/files change after last render
+
 function sanitizeLabel(name) {
   if (!name) return 'stamp_map';
   // strip extension
   const base = name.replace(/\.[^/.]+$/, '');
   // replace invalid characters with underscore
   return base.replace(/[^A-Za-z0-9_]/g, '_');
+}
+
+/* -------------------------
+   Initial button states
+   ------------------------- */
+btnExport.disabled = true;   // disabled until tile data loaded
+btnRenderMap.disabled = true; // disabled until a stamp map is available
+
+/* -------------------------
+   Helpers for render config snapshot
+   ------------------------- */
+function getCurrentRenderConfig() {
+  // capture the small set of things that affect final stamp map pixels
+  return {
+    mapSize: settingMapSize.value,
+    stampSize: parseInt(settingStampSize.value, 10),
+    paletteRow,
+    tileDataLen: tileData ? tileData.length : 0,
+    paletteDataLen: paletteData ? paletteData.length : 0,
+    stampMapLen: stampMapData ? stampMapData.length : 0
+  };
+}
+
+function configsEqual(a, b) {
+  if (!a || !b) return false;
+  return a.mapSize === b.mapSize &&
+         a.stampSize === b.stampSize &&
+         a.paletteRow === b.paletteRow &&
+         a.tileDataLen === b.tileDataLen &&
+         a.paletteDataLen === b.paletteDataLen &&
+         a.stampMapLen === b.stampMapLen;
+}
+
+function setRenderDirty(flag) {
+  renderDirty = flag;
+  renderHint.style.display = flag ? 'inline' : 'none';
+  // keep Render button enabled so user can apply changes
+  if (!btnRenderMap.disabled) btnRenderMap.disabled = false;
 }
 
 /* -------------------------
@@ -261,8 +315,18 @@ fileTiles.addEventListener('change', async (e) => {
   if (!f) return;
   tileData = new Uint8Array(await f.arrayBuffer());
   clampActiveStampIndex();
-  renderIfReady();
-  if (isEditMode) renderStampSelector();
+  // enable export now that tiles exist
+  btnExport.disabled = false;
+
+  // If a stamp map is currently displayed, do NOT update the canvas automatically.
+  // Mark the render as dirty (options/files changed).
+  if (stampMapDisplayed) {
+    setRenderDirty(!configsEqual(getCurrentRenderConfig(), lastRenderedConfig));
+  } else {
+    // Normal behavior: refresh palette preview and tile grid
+    renderIfReady();
+    if (isEditMode) renderStampSelector();
+  }
 });
 
 filePalette.addEventListener('change', async (e) => {
@@ -270,10 +334,19 @@ filePalette.addEventListener('change', async (e) => {
   if (!f) return;
   paletteData = new Uint8Array(await f.arrayBuffer());
   paletteRow = 0; // reset to first row
-  renderIfReady();
-  if (isEditMode) {
-    renderStampSelector();
-    updateActiveStampPreview();
+
+  // If a stamp map is currently displayed, don't update the canvas; mark dirty.
+  if (stampMapDisplayed) {
+    setRenderDirty(!configsEqual(getCurrentRenderConfig(), lastRenderedConfig));
+    // still update the palette preview since that's not the stamp render itself
+    showPalettePreview(parsePaletteFromData(paletteData));
+  } else {
+    // refresh preview; don't auto-render stamp map (render only via Render button)
+    renderIfReady();
+    if (isEditMode) {
+      renderStampSelector();
+      updateActiveStampPreview();
+    }
   }
 });
 
@@ -283,15 +356,31 @@ fileStampMap.addEventListener('change', async (e) => {
     stampMapData = null;
     editableStampMapData = null;
     stampMapFilename = null;
+    btnRenderMap.disabled = true;
+    // if there's no stamp map anymore, clear the displayed-flag
+    stampMapDisplayed = false;
+    lastRenderedConfig = null;
+    setRenderDirty(false);
   } else {
     stampMapData = new Uint8Array(await f.arrayBuffer());
     editableStampMapData = new Uint8Array(stampMapData);
     stampMapFilename = f.name;
+    btnRenderMap.disabled = false;
+    // Do not auto-click. Don't change displayed map automatically; mark dirty if a render was shown.
+    if (stampMapDisplayed) {
+      setRenderDirty(!configsEqual(getCurrentRenderConfig(), lastRenderedConfig));
+    }
   }
-  renderIfReady();
 });
 
+/* -------------------------
+   Export button handler
+   ------------------------- */
 btnExport.addEventListener('click', () => {
+  if (!tileData) {
+    alert('No tiles loaded. Load a tile file before exporting.');
+    return;
+  }
   try {
     canvas.toBlob((blob) => {
       if (!blob) {
@@ -312,6 +401,33 @@ btnExport.addEventListener('click', () => {
     console.error('Export failed', err);
     alert('Export failed: see console for details.');
   }
+});
+
+/* -------------------------
+   Render button handler
+   ------------------------- */
+btnRenderMap.addEventListener('click', () => {
+  if (!stampMapData) {
+    alert('No stamp map loaded. Load a map first.');
+    return;
+  }
+  if (!tileData) {
+    alert('No tile data loaded. Load a tile file before rendering the stamp map.');
+    return;
+  }
+  const palette = paletteData ? parsePaletteFromData(paletteData) : null;
+  // Use editable map in edit mode if available
+  const mapToRender = (isEditMode && editableStampMapData) ? editableStampMapData : stampMapData;
+
+  // Clear any "dirty" state (we're intentionally re-rendering)
+  renderStampMap(tileData, palette, mapToRender).then(() => {
+    // After successful render, record snapshot
+    stampMapDisplayed = true;
+    lastRenderedConfig = getCurrentRenderConfig();
+    setRenderDirty(false);
+  }).catch((err) => {
+    console.error('Render failure', err);
+  });
 });
 
 /* -------------------------
@@ -376,10 +492,16 @@ function showPalettePreview(palette) {
 
 paletteRowSelect.addEventListener('change', (e) => {
   paletteRow = parseInt(e.target.value, 10) || 0;
-  // Refresh palette preview highlighting and re-render view
+  // Refresh palette preview highlighting
   const palette = paletteData ? parsePaletteFromData(paletteData) : null;
   showPalettePreview(palette);
-  renderIfReady();
+
+  // If a stamp map is currently displayed, mark dirty and do not update the canvas.
+  if (stampMapDisplayed) {
+    setRenderDirty(!configsEqual(getCurrentRenderConfig(), lastRenderedConfig));
+  } else {
+    renderIfReady();
+  }
 });
 
 /* -------------------------
@@ -598,79 +720,107 @@ async function renderIfReady() {
   const palette = paletteData ? parsePaletteFromData(paletteData) : null;
   showPalettePreview(palette);
   
-  // Use editable map in edit mode if available
-  const mapToRender = (isEditMode && editableStampMapData) ? editableStampMapData : stampMapData;
-
-  if (mapToRender) {
-    await renderStampMap(tileData, palette, mapToRender);
-  } else {
-    renderTileGrid(tileData, palette);
+  // If a stamp map is currently displayed, don't overwrite it automatically.
+  if (stampMapDisplayed) {
+    // If config hasn't changed, let the displayed stamp map remain.
+    if (configsEqual(getCurrentRenderConfig(), lastRenderedConfig)) {
+      // nothing to do to canvas
+    } else {
+      // config changed; mark dirty and do NOT update canvas
+      setRenderDirty(true);
+    }
+    // Still update edit UI (selector/preview) if in edit mode
+    if (isEditMode) {
+      if (stampMapData && !editableStampMapData) {
+        editableStampMapData = new Uint8Array(stampMapData);
+      }
+      renderStampSelector();
+      updateActiveStampPreview();
+    }
+    return;
   }
-  
-  // Draw grid overlay in edit mode
-  if (isEditMode && mapToRender) {
-    drawGridOverlay();
+
+  // NOTE: Stamp map rendering is now performed by the explicit Render button.
+  // renderIfReady will show the tile grid by default.
+  renderTileGrid(tileData, palette);
+
+  // If we are in edit mode, update selector/preview
+  if (isEditMode) {
+    if (stampMapData && !editableStampMapData) {
+      editableStampMapData = new Uint8Array(stampMapData);
+    }
+    renderStampSelector();
+    updateActiveStampPreview();
   }
 }
 
 /* -------------------------
    Stamp map rendering (batch mode)
+   Returns a Promise that resolves when complete.
    ------------------------- */
-async function renderStampMap(tileData, palette, stampMapData) {
-  renderingInProgress = true;
-  cancelRendering = false;
-  
-  const [mapW, mapH] = settingMapSize.value.split('x').map(Number);
-  const stampSize = parseInt(settingStampSize.value, 10);
-
-  canvas.width = mapW * stampSize;
-  canvas.height = mapH * stampSize;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  showProgress(true);
-
-  const mapView = new DataView(stampMapData.buffer);
-  const totalStamps = mapW * mapH;
-  const stampsPerBatch = 100;
-  const interBatchDelayMs = 250;
-  let currentStamp = 0;
-
-  const processBatch = () => {
-    if (cancelRendering) {
-      showProgress(false);
-      renderingInProgress = false;
-      return;
-    }
-
-    const batchEnd = Math.min(currentStamp + stampsPerBatch, totalStamps);
+function renderStampMap(tileData, palette, stampMapData) {
+  return new Promise((resolve, reject) => {
+    renderingInProgress = true;
+    cancelRendering = false;
     
-    for (let i = currentStamp; i < batchEnd; i++) {
-      const my = Math.floor(i / mapW);
-      const mx = i % mapW;
-      const destX = mx * stampSize;
-      const destY = my * stampSize;
-
-      if ((i * 2 + 1) >= mapView.byteLength) continue;
-      const word = mapView.getUint16(i * 2, false);
-
-      // Always render stamp graphics (no debug hex option)
-      renderSingleStamp(ctx, word, destX, destY, stampSize, tileData, palette);
-    }
-
-    currentStamp = batchEnd;
-    updateProgress(currentStamp, totalStamps);
-
-    if (currentStamp < totalStamps) {
-      setTimeout(() => {
-        if (!cancelRendering) requestAnimationFrame(processBatch);
-      }, interBatchDelayMs);
-    } else {
-      showProgress(false);
-      renderingInProgress = false;
-    }
-  };
-
-  requestAnimationFrame(processBatch);
+    const [mapW, mapH] = settingMapSize.value.split('x').map(Number);
+    const stampSize = parseInt(settingStampSize.value, 10);
+  
+    canvas.width = mapW * stampSize;
+    canvas.height = mapH * stampSize;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+    showProgress(true);
+  
+    const mapView = new DataView(stampMapData.buffer);
+    const totalStamps = mapW * mapH;
+    const stampsPerBatch = 100;
+    const interBatchDelayMs = 250;
+    let currentStamp = 0;
+  
+    const processBatch = () => {
+      if (cancelRendering) {
+        showProgress(false);
+        renderingInProgress = false;
+        reject(new Error('Rendering cancelled'));
+        return;
+      }
+  
+      const batchEnd = Math.min(currentStamp + stampsPerBatch, totalStamps);
+      
+      for (let i = currentStamp; i < batchEnd; i++) {
+        const my = Math.floor(i / mapW);
+        const mx = i % mapW;
+        const destX = mx * stampSize;
+        const destY = my * stampSize;
+  
+        if ((i * 2 + 1) >= mapView.byteLength) continue;
+        const word = mapView.getUint16(i * 2, false);
+  
+        // Always render stamp graphics (no debug hex option)
+        renderSingleStamp(ctx, word, destX, destY, stampSize, tileData, palette);
+      }
+  
+      currentStamp = batchEnd;
+      updateProgress(currentStamp, totalStamps);
+  
+      if (currentStamp < totalStamps) {
+        setTimeout(() => {
+          if (!cancelRendering) requestAnimationFrame(processBatch);
+        }, interBatchDelayMs);
+      } else {
+        showProgress(false);
+        renderingInProgress = false;
+        // record that we've displayed a stamp map
+        stampMapDisplayed = true;
+        lastRenderedConfig = getCurrentRenderConfig();
+        setRenderDirty(false);
+        resolve();
+      }
+    };
+  
+    requestAnimationFrame(processBatch);
+  });
 }
 
 /* -------------------------
@@ -730,6 +880,11 @@ function renderTileGrid(data, palette) {
     drawTileOntoImageData(img, t, data, palette, tileX, tileY);
   }
   ctx.putImageData(img, 0, 0);
+
+  // Since we've painted tiles (not a stamp map), clear stampMapDisplayed
+  stampMapDisplayed = false;
+  lastRenderedConfig = null;
+  setRenderDirty(false);
 }
 
 /* -------------------------
@@ -790,7 +945,16 @@ settingEditMode.addEventListener('change', (e) => {
     renderStampSelector();
     updateActiveStampPreview();
   }
-  renderIfReady();
+  // Do not auto-change the canvas if a stamp map is currently displayed; otherwise render tile grid.
+  if (stampMapDisplayed) {
+    // keep canvas as-is, but update edit UI
+    if (isEditMode) {
+      renderStampSelector();
+      updateActiveStampPreview();
+    }
+  } else {
+    renderIfReady();
+  }
 });
 
 editHFlip.addEventListener('change', (e) => {
@@ -868,11 +1032,16 @@ canvas.addEventListener('click', (e) => {
   // Write to editable map data
   mapView.setUint16(cellIndex * 2, word, false);
   
-  // Re-render the cell
+  // Re-render the cell (user expects immediate visual feedback for edit operations)
   renderStampMapCell(cellIndex, word);
   
   // Redraw grid overlay
   drawGridOverlay();
+
+  // Mark displayed stamp map as dirty since the editable map changed
+  if (stampMapDisplayed) {
+    setRenderDirty(!configsEqual(getCurrentRenderConfig(), lastRenderedConfig));
+  }
 });
 
 // Main canvas right-click (clear stamp)
@@ -902,11 +1071,16 @@ canvas.addEventListener('contextmenu', (e) => {
   // Clear cell (word = 0)
   mapView.setUint16(cellIndex * 2, 0, false);
   
-  // Re-render the cell
+  // Re-render the cell (user expects immediate visual feedback for edit operations)
   renderStampMapCell(cellIndex, 0);
   
   // Redraw grid overlay
   drawGridOverlay();
+
+  // Mark displayed stamp map as dirty since the editable map changed
+  if (stampMapDisplayed) {
+    setRenderDirty(!configsEqual(getCurrentRenderConfig(), lastRenderedConfig));
+  }
 });
 
 // Map action buttons
@@ -920,7 +1094,11 @@ btnNewMap.addEventListener('click', () => {
   editableStampMapData = new Uint8Array(totalStamps * 2);
   stampMapData = new Uint8Array(editableStampMapData);
   stampMapFilename = null;
-  
+  btnRenderMap.disabled = false; // new map is renderable
+
+  // Creating a new map makes the canvas "dirty" relative to any previously displayed render
+  setRenderDirty(true);
+
   renderIfReady();
 });
 
@@ -929,6 +1107,10 @@ btnClearMap.addEventListener('click', () => {
   
   // Fill with zeros
   editableStampMapData.fill(0);
+
+  // Mark dirty if a stamp map was displayed
+  if (stampMapDisplayed) setRenderDirty(true);
+
   renderIfReady();
 });
 
@@ -967,17 +1149,30 @@ settingMapSize.addEventListener('change', () => {
     
     editableStampMapData = newData;
     stampMapData = new Uint8Array(newData);
+    btnRenderMap.disabled = false;
   }
   clampActiveStampIndex();
-  renderIfReady();
+
+  // If a stamp map is displayed, mark dirty and do not update the canvas automatically
+  if (stampMapDisplayed) {
+    setRenderDirty(!configsEqual(getCurrentRenderConfig(), lastRenderedConfig));
+  } else {
+    renderIfReady();
+  }
 });
 
 settingStampSize.addEventListener('change', () => {
   clampActiveStampIndex();
-  renderIfReady();
   if (isEditMode) {
     renderStampSelector();
     updateActiveStampPreview();
+  }
+
+  // If a stamp map is currently displayed, mark dirty and do not update canvas automatically
+  if (stampMapDisplayed) {
+    setRenderDirty(!configsEqual(getCurrentRenderConfig(), lastRenderedConfig));
+  } else {
+    renderIfReady();
   }
 });
 
@@ -1215,7 +1410,7 @@ btnExportStampPalette.addEventListener('click', () => {
 });
 
 /* -------------------------
-   End of assembly additions
+   End of code
    ------------------------- */
 
 </script>
