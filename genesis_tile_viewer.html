@@ -4,194 +4,355 @@
   <meta charset="utf-8" />
   <title>Genesis Tile Viewer & Stamp Map Editor</title>
   <style>
-    /* Page layout and typography */
-    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; padding: 18px; max-width: 1200px; margin: auto; }
-    h1 { font-size: 1.2rem; margin-bottom: 10px; }
-    label { display:block; margin: 10px 0; }
+    /* ------------------------- */
+    /* --- App-like Redesign --- */
+    /* ------------------------- */
 
-    /* Canvas styling */
-    #canvas { border:1px solid #444; image-rendering: pixelated; display:block; margin-top:12px; max-width: 100%; cursor: crosshair; }
-    #stampSelector { border:1px solid #444; cursor:pointer; max-width: 100%; image-rendering: pixelated; }
-
-    /* Palette preview swatches */
-    #palettePreview { margin-top: 10px; display: grid; grid-template-columns: repeat(16, 20px); /* 16 swatches per row */ grid-auto-rows: 20px; gap: 0; /* no gap between swatches */ width: fit-content; }
-    .sw { width: 20px; height: 20px; display: block; margin: 0; border: none; box-sizing: border-box; }
-    .sw.selected { outline: 2px solid #ff0; }
-
-    /* Controls layout */
-    .controls-container { display: flex; flex-wrap: wrap; gap: 20px; background-color: #f9f9f9; padding: 10px 20px; border-radius: 8px; margin-top: 10px;}
-    .control-group { flex: 1; min-width: 250px; }
-    .control-group h2 { font-size: 1rem; margin-top: 10px; margin-bottom: 5px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
-    .btn { display:inline-block; margin-top:8px; padding:6px 10px; border-radius:6px; background:#1976d2; color:#fff; border:none; cursor:pointer; }
-    .btn:active { transform: translateY(1px); }
-    .btn-danger { background:#d32f2f; }
-    .btn-success { background:#2e7d32; }
-
-    /* Progress indicator */
-    #progressBar { width: 100%; height: 20px; background: #e0e0e0; border-radius: 4px; margin-top: 10px; overflow: hidden; display: none; }
-    #progressFill { height: 100%; background: #4CAF50; transition: width 0.2s; width: 0%; }
-    #progressText { text-align: center; margin-top: 5px; color: #666; display: none; }
-
-    /* Edit mode UI */
-    #editTools { display: none; }
-    #activeStampPreview { border:1px solid #444; image-rendering: pixelated; margin-top: 8px; }
-    .edit-instruction { color: #1976d2; font-weight: bold; }
-
-    /* Assembly modal */
-    .modal-backdrop {
-      position: fixed;
-      left: 0; top: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.5);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      z-index: 9999;
+    /* -- Theme & Variables -- */
+    :root {
+      --bg-main: #2a2d34;
+      --bg-panel: #353841;
+      --bg-control: #4a4e59;
+      --border-color: #555966;
+      --text-primary: #e1e1e1;
+      --text-secondary: #a0a4b1;
+      --text-header: #ffffff;
+      --primary-accent: #3a86ff;
+      --primary-accent-hover: #5c9cff;
+      --success-accent: #2e7d32;
+      --danger-accent: #d32f2f;
+      --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+      --panel-padding: 15px;
     }
-    .modal {
-      background: white;
-      width: min(1100px, 95%);
-      max-height: 90%;
-      border-radius: 8px;
-      padding: 12px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+
+    /* -- Base & Layout -- */
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: var(--font-family);
+      background-color: var(--bg-main);
+      color: var(--text-primary);
+      margin: 0;
+      padding: 0;
+      height: 100vh;
       display: flex;
       flex-direction: column;
+      overflow: hidden;
+    }
+
+    .app-container {
+      display: grid;
+      grid-template-columns: 300px 1fr 300px;
+      grid-template-rows: auto 1fr auto;
+      height: 100%;
+      gap: 8px;
+      padding: 8px;
+    }
+
+    header.app-header {
+      grid-column: 1 / -1;
+      background-color: var(--bg-panel);
+      padding: 10px 20px;
+      border-bottom: 1px solid var(--border-color);
+      font-size: 1.2rem;
+      font-weight: 500;
+      color: var(--text-header);
+      border-radius: 6px;
+    }
+
+    .panel {
+      background-color: var(--bg-panel);
+      border-radius: 6px;
+      padding: var(--panel-padding);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .main-content {
+      grid-column: 2 / 3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: auto;
+      background-image:
+        linear-gradient(45deg, #444 25%, transparent 25%),
+        linear-gradient(-45deg, #444 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #444 75%),
+        linear-gradient(-45deg, transparent 75%, #444 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+      padding: 20px;
+      border-radius: 6px;
+    }
+
+    footer.status-bar {
+      grid-column: 1 / -1;
+      background-color: var(--bg-panel);
+      padding: 5px 15px;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      border-radius: 6px;
+    }
+
+    /* -- UI Components Styling -- */
+    fieldset {
+      border: 1px solid var(--border-color);
+      padding: 10px 12px 12px;
+      border-radius: 4px;
+      margin: 0;
+    }
+
+    legend {
+      padding: 0 5px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+    }
+
+    input[type="file"], select, input[type="number"] {
+      width: 100%;
+      background-color: var(--bg-control);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+    input[type="file"] { padding: 4px; }
+    select { appearance: none; background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23e1e1e1' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 8px center; background-size: 1em; padding-right: 2em; }
+
+    .btn {
+      display: inline-block;
+      padding: 8px 14px;
+      border-radius: 6px;
+      background: var(--primary-accent);
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: background-color 0.2s, transform 0.1s;
+    }
+    .btn:hover { background-color: var(--primary-accent-hover); }
+    .btn:active { transform: translateY(1px); }
+    .btn:disabled { background-color: #555; color: #999; cursor: not-allowed; }
+    .btn-danger { background: var(--danger-accent); }
+    .btn-danger:hover { background: #e57373; }
+    .btn-success { background: var(--success-accent); }
+    .btn-success:hover { background: #4caf50; }
+
+    .button-group { display: flex; flex-wrap: wrap; gap: 8px; }
+
+    /* Canvas styling */
+    #canvas { border:1px solid #777; image-rendering: pixelated; display:block; max-width: 100%; max-height: 100%; cursor: crosshair; }
+    #stampSelector { border:1px solid var(--border-color); cursor:pointer; max-width: 100%; image-rendering: pixelated; background: #000; }
+    #tileGridCanvas { border:1px solid var(--border-color); image-rendering: pixelated; max-width: 100%; background: #000; display: block; }
+
+    /* Palette preview swatches */
+    #palettePreview { margin-top: 5px; display: grid; grid-template-columns: repeat(16, 1fr); gap: 0; width: 100%; border: 1px solid var(--border-color); }
+    .sw { width: 100%; padding-bottom: 100%; height: 0; display: block; margin: 0; border: none; box-sizing: border-box; }
+    
+    /* Progress indicator in status bar */
+    #progressBar { flex-grow: 1; height: 12px; background: var(--bg-control); border-radius: 4px; overflow: hidden; display: none; }
+    #progressFill { height: 100%; background: var(--primary-accent); transition: width 0.2s; width: 0%; }
+    #progressText { display: none; font-size: 0.8rem; }
+
+    /* Edit mode UI */
+    #activeStampPreview { border:1px solid var(--border-color); image-rendering: pixelated; margin-top: 8px; background: #000; }
+    #activeStampInfo { margin-top: 5px; font-size: 0.8rem; color: var(--text-secondary); text-align: center; }
+
+    /* Assembly modal */
+    .modal-backdrop { position: fixed; left: 0; top: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 9999; }
+    .modal {
+      background: var(--bg-panel);
+      width: min(1100px, 95vw);
+      max-height: 90vh;
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--border-color);
     }
     #asmText {
       width: 100%;
-      height: 60vh;
+      flex-grow: 1;
       font-family: monospace;
-      font-size: 12px;
+      font-size: 13px;
       white-space: pre;
       overflow: auto;
-      margin-top: 8px;
-      padding: 8px;
-      border: 1px solid #ddd;
+      margin-top: 12px;
+      padding: 10px;
+      border: 1px solid var(--border-color);
       border-radius: 6px;
+      background: var(--bg-main);
+      color: var(--text-primary);
       resize: vertical;
     }
-    .modal-actions { margin-top: 8px; display:flex; gap:8px; align-items:center; }
-    .modal-actions .small { font-size: 0.9rem; color: #555; }
-    .toggle { margin-left: 8px; }
+    .modal-header, .modal-footer { display:flex; gap:8px; align-items:center; }
+    .modal-header { justify-content: space-between; margin-bottom: 8px; }
+    .modal-header strong { font-size: 1.1rem; }
+    .modal-footer { margin-top: 12px; }
+    .modal-footer .info { flex:1; font-size: 0.85rem; color: var(--text-secondary); }
 
-    /* Small hint next to render button */
-    #renderHint { margin-left: 10px; font-size: 0.85rem; color: #d35400; display: none; vertical-align: middle; }
+    /* Checkbox styling */
+    label input[type="checkbox"] { margin-right: 8px; accent-color: var(--primary-accent); vertical-align: middle; }
+
+    /* Hint next to render button */
+    #renderHint { margin-left: 10px; font-size: 0.85rem; color: #ffab40; display: none; vertical-align: middle; }
   </style>
 </head>
 <body>
-  <h1>Genesis Tile Viewer & Stamp Map Editor</h1>
 
-  <div class="controls-container">
-    <!-- Input Files -->
-    <div class="control-group">
-      <h2>Input Files</h2>
-      <label>Tile file (.bin / .unc): <input id="fileTiles" type="file" accept=".bin,.unc"></label>
-      <label>Palette file (.bin / .pal): <input id="filePalette" type="file" accept=".bin,.pal,.unc"></label>
-      <label>Stamp map file (.bin / .unc): <input id="fileStampMap" type="file" accept=".bin,.unc"></label>
-      <div style="margin-top:8px;">
-        <button id="btnExport" class="btn" title="Export current canvas to PNG">Export PNG</button>
-      </div>
+  <div class="app-container">
+    <header class="app-header">
+      Genesis Tile Viewer & Stamp Map Editor
+    </header>
 
-      <!-- Palette preview and row selector -->
-      <div id="palettePreview"></div>
-      <label id="paletteRowContainer" style="display:none; margin-top:8px;">Palette Row: <select id="paletteRowSelect"></select></label>
-    </div>
+    <!-- Left Sidebar: Main Controls -->
+    <aside class="panel left-sidebar">
+      <fieldset>
+        <legend>Input Files</legend>
+        <label>Tile art (.bin / .unc): <input id="fileTiles" type="file" accept=".bin,.unc"></label>
+        <label>Palette (.bin / .pal): <input id="filePalette" type="file" accept=".bin,.pal,.unc"></label>
+        <label>Stamp map (.bin / .unc): <input id="fileStampMap" type="file" accept=".bin,.unc"></label>
+      </fieldset>
 
-    <!-- Map Settings -->
-    <div class="control-group">
-      <h2>Stamp Map Settings</h2>
-      <label>Map Size (in stamps):
-        <select id="settingMapSize">
-          <option value="16x16">16x16 stamps (256x256px)</option>
-          <option value="8x8">8x8 stamps (256x256px)</option>
-          <option value="256x256" selected="">256x256 stamps (4096x4096px)</option>
-          <option value="128x128">128x128 stamps (4096x4096px)</option>
-        </select>
-      </label>
-      <label>Stamp Size (in pixels):
-        <select id="settingStampSize">
-          <option value="16" selected="">16x16</option>
-          <option value="32">32x32</option>
-        </select>
-      </label>
+      <fieldset>
+        <legend>Palette</legend>
+        <div id="palettePreview"></div>
+        <div id="paletteRowContainer" style="display:none; margin-top:8px;">
+          <label>Palette Row: <select id="paletteRowSelect"></select></label>
+        </div>
+      </fieldset>
 
-      <div style="margin-top:8px;">
-        <button id="btnRenderMap" class="btn" title="Render the loaded stamp map" disabled>Render Stamp Map</button>
-      </div>
-
-    </div>
-
-    <!-- Mode & Edit Tools -->
-    <div class="control-group">
-      <h2>Mode</h2>
-      <label><input id="settingEditMode" type="checkbox"> Enable Edit Mode</label>
-      <div class="hint">In edit mode, <span class="edit-instruction">click cells to place stamps</span> and <span class="edit-instruction">right-click to clear</span>.</div>
-      
-      <div id="editTools">
-        <h2 style="margin-top: 15px;">Active Stamp</h2>
-        <label>H-Flip: <input type="checkbox" id="editHFlip"></label>
-        <label>Rotation: 
-          <select id="editRotation">
-            <option value="0" selected="">0°</option>
-            <option value="1">90°</option>
-            <option value="2">180°</option>
-            <option value="3">270°</option>
+      <fieldset>
+        <legend>Stamp Map Settings</legend>
+        <label>Map Size (in stamps):
+          <select id="settingMapSize">
+            <option value="16x16">16x16 (256x256px)</option>
+            <option value="8x8">8x8 (256x256px)</option>
+            <option value="256x256" selected>256x256 (4096x4096px)</option>
+            <option value="128x128">128x128 (4096x4096px)</option>
           </select>
         </label>
-        <canvas id="activeStampPreview" width="64" height="64"></canvas>
-        <div id="activeStampInfo" style="margin-top: 5px; font-size: 0.85rem; color: #666;">Stamp 0 | H-Flip: false | Rotation: 0°</div>
-        
-        <h2 style="margin-top: 15px;">Stamp Palette</h2>
-        <canvas id="stampSelector" width="512" height="32" style="display: block;"></canvas>
-        <div style="margin-top:8px;">
-          <button id="btnExportStampPalette" class="btn" title="Export the stamp palette as PNG (transparent background)">Export Stamp Palette PNG</button>
+        <label>Stamp Size (in pixels):
+          <select id="settingStampSize">
+            <option value="16" selected>16x16</option>
+            <option value="32">32x32</option>
+          </select>
+        </label>
+        <div style="margin-top:12px;">
+          <button id="btnRenderMap" class="btn" title="Render the loaded stamp map" disabled>Render Stamp Map</button>
         </div>
-        
-        <div style="margin-top: 12px;">
-          <button id="btnNewMap" class="btn">New Empty Map</button>
-          <button id="btnClearMap" class="btn btn-danger">Clear Entire Map</button>
-          <button id="btnSaveMap" class="btn btn-success">Save Map</button>
-        </div>
-      </div>
-    </div>
+      </fieldset>
 
-    <!-- Assembly / Export -->
-    <div class="control-group">
-      <h2>Map Export</h2>
-      <button id="btnView68k" class="btn" title="View the current stamp map as 68K words">View as 68K assembly</button>
-      <div style="margin-top:8px;">
-        <label><input id="optIncludeComments" type="checkbox" checked> Include row comments ( ; row N )</label>
-        <label><input id="optLabelAtTop" type="checkbox"> Add label <code>stamp_map:</code> at top</label>
-        <label style="display:inline-block; margin-left:8px;">Words per line: <input id="optWordsPerLine" type="number" value="0" min="0" style="width:70px; margin-left:6px;"> (0 = map width)</label>
+      <fieldset>
+        <legend>Export</legend>
+        <div class="button-group">
+          <button id="btnExport" class="btn" title="Export current canvas to PNG">Export PNG</button>
+          <button id="btnView68k" class="btn" title="View the current stamp map as 68K words">View Assembly</button>
+        </div>
+        <div style="margin-top:12px;">
+          <label><input id="optIncludeComments" type="checkbox" checked> Include row comments</label>
+          <label><input id="optLabelAtTop" type="checkbox"> Add label at top</label>
+          <label>Words per line: <input id="optWordsPerLine" type="number" value="0" min="0" style="width:70px; margin-left:6px;"> (0=map width)</label>
+        </div>
+      </fieldset>
+    </aside>
+
+    <!-- Main Canvas Area -->
+    <main class="main-content">
+      <canvas id="canvas" width="256" height="256"></canvas>
+    </main>
+
+    <!-- Right Sidebar: Edit Tools -->
+    <aside class="panel right-sidebar">
+      <div id="editTools">
+        <fieldset>
+          <legend>Map Actions</legend>
+          <div class="button-group">
+            <button id="btnNewMap" class="btn">New Empty Map</button>
+            <button id="btnClearMap" class="btn btn-danger">Clear Map</button>
+            <button id="btnSaveMap" class="btn btn-success">Save Map</button>
+          </div>
+          <div style="margin-top: 12px;">
+             <label><input type="checkbox" id="showGridToggle" checked> Show Grid</label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Active Stamp</legend>
+          <div style="display:flex; gap: 15px; align-items: flex-start;">
+            <canvas id="activeStampPreview" width="64" height="64"></canvas>
+            <div style="flex: 1;">
+              <label>H-Flip: <input type="checkbox" id="editHFlip"></label>
+              <label>Rotation:
+                <select id="editRotation">
+                  <option value="0" selected>0°</option>
+                  <option value="1">90°</option>
+                  <option value="2">180°</option>
+                  <option value="3">270°</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div id="activeStampInfo" style="margin-top: 5px;">Stamp 0 | H-Flip: false | Rotation: 0°</div>
+        </fieldset>
+        
+        <fieldset>
+          <legend>Stamp Palette</legend>
+          <canvas id="stampSelector" width="270" height="32"></canvas>
+          <div class="button-group" style="margin-top:12px;">
+            <button id="btnExportStampPalette" class="btn" title="Export the stamp palette as PNG">Export Palette PNG</button>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Tile Art</legend>
+          <canvas id="tileGridCanvas" width="256" height="256"></canvas>
+        </fieldset>
       </div>
-    </div>
+    </aside>
+    
+    <!-- Status Bar -->
+    <footer class="status-bar">
+      <span>Ready.</span>
+      <div id="progressBar"><div id="progressFill"></div></div>
+      <div id="progressText">Rendering...</div>
+    </footer>
   </div>
-
-  <!-- Progress indicators -->
-  <div id="progressBar" style="display: none;"><div id="progressFill" style="width: 100%;"></div></div>
-  <div id="progressText" style="display: none;">Rendering: 65536 / 65536 stamps (100%)</div>
-
-  <!-- Canvas where the tile grid or stamp map is drawn -->
-  <canvas id="canvas" width="256" height="256" style="cursor: crosshair;"></canvas>
 
   <!-- Assembly modal -->
   <div id="asmModalBackdrop" class="modal-backdrop" role="dialog" aria-hidden="true">
     <div class="modal" role="document">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
+      <div class="modal-header">
         <strong>Stamp Map — 68K Assembly View</strong>
-        <div>
+        <div class="button-group">
           <button id="btnAsmCopy" class="btn">Copy</button>
           <button id="btnAsmDownload" class="btn btn-success">Download .asm</button>
           <button id="btnAsmClose" class="btn btn-danger">Close</button>
         </div>
       </div>
 
-      <div class="modal-actions">
-        <div style="flex:1"></div>
-        <div class="small">Map source: <span id="asmMapSource">—</span></div>
-      </div>
-
       <textarea id="asmText" readonly></textarea>
+
+      <div class="modal-footer">
+        <div class="info">Map source: <span id="asmMapSource">—</span></div>
+      </div>
     </div>
   </div>
 
@@ -204,7 +365,6 @@ const filePalette = document.getElementById('filePalette');
 const fileStampMap = document.getElementById('fileStampMap');
 const settingMapSize = document.getElementById('settingMapSize');
 const settingStampSize = document.getElementById('settingStampSize');
-const settingEditMode = document.getElementById('settingEditMode');
 const btnExport = document.getElementById('btnExport');
 const btnRenderMap = document.getElementById('btnRenderMap');
 const renderHint = document.getElementById('renderHint');
@@ -228,7 +388,10 @@ const stampSelectorCtx = stampSelector.getContext('2d');
 const btnNewMap = document.getElementById('btnNewMap');
 const btnClearMap = document.getElementById('btnClearMap');
 const btnSaveMap = document.getElementById('btnSaveMap');
+const showGridToggle = document.getElementById('showGridToggle');
 const btnExportStampPalette = document.getElementById('btnExportStampPalette');
+const tileGridCanvas = document.getElementById('tileGridCanvas');
+const tileGridCtx = tileGridCanvas.getContext('2d');
 
 // Assembly UI
 const btnView68k = document.getElementById('btnView68k');
@@ -250,36 +413,27 @@ let editableStampMapData = null;
 let stampMapFilename = null;
 let renderingInProgress = false;
 let cancelRendering = false;
-let isEditMode = false;
 let activeStampIndex = 1;
 let activeHFlip = false;
 let activeRotation = 0;
-let paletteRow = 0; // <-- selected palette row (0-based)
-
-// New state for "don't auto-update rendered map"
-let stampMapDisplayed = false;        // true when a stamp map rendering is currently shown on canvas
-let lastRenderedConfig = null;        // snapshot of config used to produce the displayed render
-let renderDirty = false;              // true when options/files change after last render
+let paletteRow = 0;
+let stampMapDisplayed = false;
+let lastRenderedConfig = null;
+let renderDirty = false;
 
 function sanitizeLabel(name) {
   if (!name) return 'stamp_map';
-  // strip extension
   const base = name.replace(/\.[^/.]+$/, '');
-  // replace invalid characters with underscore
   return base.replace(/[^A-Za-z0-9_]/g, '_');
 }
 
 /* -------------------------
-   Initial button states
+   Helpers & Initial State
    ------------------------- */
-btnExport.disabled = true;   // disabled until tile data loaded
-btnRenderMap.disabled = true; // disabled until a stamp map is available
+btnExport.disabled = true;
+btnRenderMap.disabled = true;
 
-/* -------------------------
-   Helpers for render config snapshot
-   ------------------------- */
 function getCurrentRenderConfig() {
-  // capture the small set of things that affect final stamp map pixels
   return {
     mapSize: settingMapSize.value,
     stampSize: parseInt(settingStampSize.value, 10),
@@ -303,8 +457,13 @@ function configsEqual(a, b) {
 function setRenderDirty(flag) {
   renderDirty = flag;
   renderHint.style.display = flag ? 'inline' : 'none';
-  // keep Render button enabled so user can apply changes
   if (!btnRenderMap.disabled) btnRenderMap.disabled = false;
+}
+
+function clearMainCanvas() {
+    canvas.style.display = 'none';
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    stampMapDisplayed = false;
 }
 
 /* -------------------------
@@ -315,17 +474,10 @@ fileTiles.addEventListener('change', async (e) => {
   if (!f) return;
   tileData = new Uint8Array(await f.arrayBuffer());
   clampActiveStampIndex();
-  // enable export now that tiles exist
   btnExport.disabled = false;
-
-  // If a stamp map is currently displayed, do NOT update the canvas automatically.
-  // Mark the render as dirty (options/files changed).
+  renderIfReady();
   if (stampMapDisplayed) {
     setRenderDirty(!configsEqual(getCurrentRenderConfig(), lastRenderedConfig));
-  } else {
-    // Normal behavior: refresh palette preview and tile grid
-    renderIfReady();
-    if (isEditMode) renderStampSelector();
   }
 });
 
@@ -334,19 +486,9 @@ filePalette.addEventListener('change', async (e) => {
   if (!f) return;
   paletteData = new Uint8Array(await f.arrayBuffer());
   paletteRow = 0; // reset to first row
-
-  // If a stamp map is currently displayed, don't update the canvas; mark dirty.
+  renderIfReady();
   if (stampMapDisplayed) {
     setRenderDirty(!configsEqual(getCurrentRenderConfig(), lastRenderedConfig));
-    // still update the palette preview since that's not the stamp render itself
-    showPalettePreview(parsePaletteFromData(paletteData));
-  } else {
-    // refresh preview; don't auto-render stamp map (render only via Render button)
-    renderIfReady();
-    if (isEditMode) {
-      renderStampSelector();
-      updateActiveStampPreview();
-    }
   }
 });
 
@@ -357,16 +499,14 @@ fileStampMap.addEventListener('change', async (e) => {
     editableStampMapData = null;
     stampMapFilename = null;
     btnRenderMap.disabled = true;
-    // if there's no stamp map anymore, clear the displayed-flag
-    stampMapDisplayed = false;
     lastRenderedConfig = null;
     setRenderDirty(false);
+    clearMainCanvas();
   } else {
     stampMapData = new Uint8Array(await f.arrayBuffer());
     editableStampMapData = new Uint8Array(stampMapData);
     stampMapFilename = f.name;
     btnRenderMap.disabled = false;
-    // Do not auto-click. Don't change displayed map automatically; mark dirty if a render was shown.
     if (stampMapDisplayed) {
       setRenderDirty(!configsEqual(getCurrentRenderConfig(), lastRenderedConfig));
     }
@@ -376,58 +516,60 @@ fileStampMap.addEventListener('change', async (e) => {
 /* -------------------------
    Export button handler
    ------------------------- */
-btnExport.addEventListener('click', () => {
-  if (!tileData) {
-    alert('No tiles loaded. Load a tile file before exporting.');
-    return;
-  }
-  try {
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        alert('Unable to export image (canvas is empty).');
-        return;
-      }
-      const a = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      a.href = url;
-      const filename = `genesis-render-${new Date().toISOString().replace(/[:.]/g,'-')}.png`;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }, 'image/png');
-  } catch (err) {
-    console.error('Export failed', err);
-    alert('Export failed: see console for details.');
-  }
+btnExport.addEventListener('click', async () => {
+    if (stampMapDisplayed && (editableStampMapData || stampMapData)) {
+        const mapToExport = editableStampMapData || stampMapData;
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = canvas.width;
+        tempCanvas.height = canvas.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        const palette = paletteData ? parsePaletteFromData(paletteData) : null;
+        
+        await renderStampMap(tempCtx, tileData, palette, mapToExport, false); // Render without progress/overlay
+
+        tempCanvas.toBlob((blob) => {
+            if (!blob) { alert('Unable to export image.'); return; }
+            const a = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            a.href = url;
+            a.download = `genesis-map-${new Date().toISOString().replace(/[:.]/g,'-')}.png`;
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }, 'image/png');
+
+    } else if (tileData) {
+        tileGridCanvas.toBlob((blob) => {
+            if (!blob) { alert('Unable to export image.'); return; }
+            const a = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            a.href = url;
+            a.download = `genesis-tiles-${new Date().toISOString().replace(/[:.]/g,'-')}.png`;
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }, 'image/png');
+    } else {
+        alert('Nothing to export.');
+    }
 });
 
 /* -------------------------
    Render button handler
    ------------------------- */
 btnRenderMap.addEventListener('click', () => {
-  if (!stampMapData) {
-    alert('No stamp map loaded. Load a map first.');
-    return;
-  }
-  if (!tileData) {
-    alert('No tile data loaded. Load a tile file before rendering the stamp map.');
-    return;
-  }
+  if (!stampMapData) { alert('No stamp map loaded.'); return; }
+  if (!tileData) { alert('No tile data loaded.'); return; }
+  
   const palette = paletteData ? parsePaletteFromData(paletteData) : null;
-  // Use editable map in edit mode if available
-  const mapToRender = (isEditMode && editableStampMapData) ? editableStampMapData : stampMapData;
+  const mapToRender = editableStampMapData || stampMapData;
 
-  // Clear any "dirty" state (we're intentionally re-rendering)
-  renderStampMap(tileData, palette, mapToRender).then(() => {
-    // After successful render, record snapshot
+  renderStampMap(ctx, tileData, palette, mapToRender, true).then(() => {
     stampMapDisplayed = true;
     lastRenderedConfig = getCurrentRenderConfig();
     setRenderDirty(false);
-  }).catch((err) => {
-    console.error('Render failure', err);
-  });
+    if (showGridToggle.checked) {
+      drawGridOverlay(ctx);
+    }
+  }).catch((err) => console.error('Render failure', err));
 });
 
 /* -------------------------
@@ -454,14 +596,6 @@ function showPalettePreview(palette) {
     return;
   }
   const max = Math.min(palette.length, 256);
-
-  // Ensure grid columns match the swatch size if you ever change .sw dimensions
-  // (keeps layout consistent)
-  const swSize = 20;
-  palettePreview.style.gridTemplateColumns = `repeat(16, ${swSize}px)`;
-  palettePreview.style.gridAutoRows = `${swSize}px`;
-
-  // Calculate number of rows and populate row selector if needed
   const rows = Math.ceil(max / 16);
   if (rows > 1) {
     paletteRowContainer.style.display = 'block';
@@ -469,7 +603,7 @@ function showPalettePreview(palette) {
     for (let r = 0; r < rows; r++) {
       const opt = document.createElement('option');
       opt.value = r;
-      opt.textContent = `Row ${r} (palette indexes ${r*16}–${Math.min((r+1)*16-1, max-1)})`;
+      opt.textContent = `Row ${r} (${r*16}–${Math.min((r+1)*16-1, max-1)})`;
       paletteRowSelect.appendChild(opt);
     }
     paletteRowSelect.value = String(paletteRow);
@@ -481,26 +615,17 @@ function showPalettePreview(palette) {
     const p = palette[i];
     const div = document.createElement('div');
     div.className = 'sw';
-    div.title = `#${i} rgb(${p.r},${p.g},${p.b})`;
+    div.title = `Index ${i}: rgb(${p.r},${p.g},${p.b})`;
     div.style.backgroundColor = `rgb(${p.r},${p.g},${p.b})`;
-    // Highlight the swatches in the selected row
-    const thisRow = Math.floor(i / 16);
-    if (thisRow === paletteRow) div.classList.add('selected');
     palettePreview.appendChild(div);
   }
 }
 
 paletteRowSelect.addEventListener('change', (e) => {
   paletteRow = parseInt(e.target.value, 10) || 0;
-  // Refresh palette preview highlighting
-  const palette = paletteData ? parsePaletteFromData(paletteData) : null;
-  showPalettePreview(palette);
-
-  // If a stamp map is currently displayed, mark dirty and do not update the canvas.
+  renderIfReady();
   if (stampMapDisplayed) {
     setRenderDirty(!configsEqual(getCurrentRenderConfig(), lastRenderedConfig));
-  } else {
-    renderIfReady();
   }
 });
 
@@ -528,43 +653,29 @@ function clampActiveStampIndex() {
   const tilesPerDim = stampSize / 8;
   const tilesPerStamp = tilesPerDim * tilesPerDim;
   const maxPhysicalStamps = Math.floor(totalTiles / tilesPerStamp) || 1;
-  
-  // activeStampIndex is a logical ID, clamp to valid range
   const maxLogicalID = (stampSize === 32) ? maxPhysicalStamps * 4 : maxPhysicalStamps;
   activeStampIndex = Math.max(1, Math.min(activeStampIndex, maxLogicalID));
 }
 
 function updateActiveStampPreview() {
-  const ctx = activeStampPreview.getContext('2d');
-  ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, 64, 64);
-  
+  const previewCtx = activeStampPreview.getContext('2d');
+  previewCtx.imageSmoothingEnabled = false;
+  previewCtx.fillStyle = '#000';
+  previewCtx.fillRect(0, 0, 64, 64);
   if (!tileData || !paletteData || activeStampIndex === 0) return;
-  
   const palette = parsePaletteFromData(paletteData);
   const word = ((activeHFlip ? 1 : 0) << 15) | ((activeRotation & 0x03) << 13) | (activeStampIndex & 0x07FF);
   const stampSize = parseInt(settingStampSize.value, 10);
-  
-  // Render at 2x scale
   const scale = Math.min(2, 64 / stampSize);
   const renderSize = stampSize * scale;
   const offsetX = (64 - renderSize) / 2;
   const offsetY = (64 - renderSize) / 2;
-  
   const tempCanvas = document.createElement('canvas');
   tempCanvas.width = stampSize;
   tempCanvas.height = stampSize;
   const tempCtx = tempCanvas.getContext('2d');
-  
   renderSingleStamp(tempCtx, word, 0, 0, stampSize, tileData, palette);
-  ctx.drawImage(tempCanvas, offsetX, offsetY, renderSize, renderSize);
-  
-  // Update info text
-  activeStampInfo.textContent = `Stamp ${activeStampIndex} | H-Flip: ${activeHFlip} | Rotation: ${activeRotation * 90}°`;
-}
-
-function updateActiveStampInfo() {
+  previewCtx.drawImage(tempCanvas, offsetX, offsetY, renderSize, renderSize);
   activeStampInfo.textContent = `Stamp ${activeStampIndex} | H-Flip: ${activeHFlip} | Rotation: ${activeRotation * 90}°`;
 }
 
@@ -577,49 +688,29 @@ function renderStampSelector() {
     return;
   }
   stampSelector.style.display = 'block';
-  
   const palette = parsePaletteFromData(paletteData);
   const stampSize = parseInt(settingStampSize.value, 10);
-  
   const totalTiles = Math.floor(tileData.length / 32);
   const tilesPerDim = stampSize / 8;
   const tilesPerStamp = tilesPerDim * tilesPerDim;
   const maxPhysicalStamps = Math.floor(totalTiles / tilesPerStamp);
-  
-  const stampsPerRow = 16;
+  const stampsPerRow = Math.floor(stampSelector.parentElement.clientWidth / stampSize) || 1;
   const rows = Math.ceil(maxPhysicalStamps / stampsPerRow);
-  
   stampSelector.width = stampsPerRow * stampSize;
   stampSelector.height = rows * stampSize;
   stampSelectorCtx.imageSmoothingEnabled = false;
-  
-  // Clear background
   stampSelectorCtx.fillStyle = '#2a2a2a';
   stampSelectorCtx.fillRect(0, 0, stampSelector.width, stampSelector.height);
-  
-  // Render physical stamps
   for (let i = 0; i < maxPhysicalStamps; i++) {
     const row = Math.floor(i / stampsPerRow);
     const col = i % stampsPerRow;
     const x = col * stampSize;
     const y = row * stampSize;
-    
-    // Use first logical ID of each physical stamp's group
     const logicalID = (stampSize === 32) ? (i * 4 + 4) : (i + 4);
-    
     renderSingleStamp(stampSelectorCtx, logicalID, x, y, stampSize, tileData, palette);
-    
-    // Highlight if activeStampIndex belongs to this physical stamp's group
-    let shouldHighlight = false;
-    if (stampSize === 32) {
-      const activeGroup = Math.floor((activeStampIndex - 1) / 4);
-      shouldHighlight = (activeGroup === i);
-    } else {
-      shouldHighlight = (logicalID === activeStampIndex);
-    }
-    
+    let shouldHighlight = (stampSize === 32) ? (Math.floor((activeStampIndex - 1) / 4) === i) : (logicalID === activeStampIndex);
     if (shouldHighlight) {
-      stampSelectorCtx.strokeStyle = '#ff0';
+      stampSelectorCtx.strokeStyle = '#ffdd44';
       stampSelectorCtx.lineWidth = 2;
       stampSelectorCtx.strokeRect(x + 1, y + 1, stampSize - 2, stampSize - 2);
     }
@@ -627,125 +718,60 @@ function renderStampSelector() {
 }
 
 /* -------------------------
-   Single stamp rendering (extracted for reuse)
+   Core Rendering Functions
    ------------------------- */
-function renderSingleStamp(ctx, word, destX, destY, stampSize, tileData, palette) {
-  const H_MASK = 0x8000;
-  const ROT_MASK = 0x6000;
-  const STAMP_MASK = 0x07FF;
-  
+function renderSingleStamp(targetCtx, word, destX, destY, stampSize, tileData, palette) {
+  const H_MASK = 0x8000, ROT_MASK = 0x6000, STAMP_MASK = 0x07FF;
   const hFlip = (word & H_MASK) !== 0;
   const rotation = (word & ROT_MASK) >> 13;
   const stampIndex = word & STAMP_MASK;
-  
-  if (stampIndex === 0) return; // blank cell
-  
+  if (stampIndex === 0) return;
   const tilesPerDim = stampSize / 8;
   let stampAddr = stampIndex - 1;
   if (stampSize === 32) stampAddr &= ~0x03;
   const baseTileIndex = stampAddr * 4;
-  
-  // Create temporary canvas for stamp composition
   const tempCanvas = document.createElement('canvas');
   tempCanvas.width = stampSize;
   tempCanvas.height = stampSize;
   const tempCtx = tempCanvas.getContext('2d');
   const imgData = tempCtx.createImageData(stampSize, stampSize);
-  
-  // Draw tiles into image data
   for (let sty = 0; sty < tilesPerDim; sty++) {
     for (let stx = 0; stx < tilesPerDim; stx++) {
       const tileIndexInStamp = stx * tilesPerDim + sty;
       drawTileOntoImageData(imgData, baseTileIndex + tileIndexInStamp, tileData, palette, stx * 8, sty * 8);
     }
   }
-  
   tempCtx.putImageData(imgData, 0, 0);
-  
-  // Apply transforms and draw to destination
-  const centerX = destX + stampSize / 2;
-  const centerY = destY + stampSize / 2;
-  
-  ctx.save();
-  ctx.translate(centerX, centerY);
-  ctx.rotate(-rotation * Math.PI / 2);
-  
+  const centerX = destX + stampSize / 2, centerY = destY + stampSize / 2;
+  targetCtx.save();
+  targetCtx.translate(centerX, centerY);
+  targetCtx.rotate(-rotation * Math.PI / 2);
   if (hFlip) {
-    if (rotation % 2 === 0) {
-      ctx.scale(-1, 1);
-    } else {
-      ctx.scale(1, -1);
-    }
+    targetCtx.scale((rotation % 2 === 0) ? -1 : 1, (rotation % 2 === 0) ? 1 : -1);
   }
-  
-  ctx.drawImage(tempCanvas, -stampSize / 2, -stampSize / 2);
-  ctx.restore();
+  targetCtx.drawImage(tempCanvas, -stampSize / 2, -stampSize / 2);
+  targetCtx.restore();
 }
 
-/* -------------------------
-   Single cell re-render (for editing)
-   ------------------------- */
 function renderStampMapCell(cellIndex, word) {
   if (!stampMapData) return;
-  
-  const [mapW, mapH] = settingMapSize.value.split('x').map(Number);
+  const [mapW] = settingMapSize.value.split('x').map(Number);
   const stampSize = parseInt(settingStampSize.value, 10);
-  
   const my = Math.floor(cellIndex / mapW);
   const mx = cellIndex % mapW;
-  const destX = mx * stampSize;
-  const destY = my * stampSize;
-  
-  // Clear cell area
+  const destX = mx * stampSize, destY = my * stampSize;
   ctx.clearRect(destX, destY, stampSize, stampSize);
-  
-  // Render stamp if not blank
   if (word !== 0) {
     const palette = paletteData ? parsePaletteFromData(paletteData) : null;
     renderSingleStamp(ctx, word, destX, destY, stampSize, tileData, palette);
   }
 }
 
-/* -------------------------
-   Main render dispatcher
-   ------------------------- */
 async function renderIfReady() {
-  if (!tileData) return;
-
-  if (renderingInProgress) {
-    cancelRendering = true;
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-
   const palette = paletteData ? parsePaletteFromData(paletteData) : null;
   showPalettePreview(palette);
-  
-  // If a stamp map is currently displayed, don't overwrite it automatically.
-  if (stampMapDisplayed) {
-    // If config hasn't changed, let the displayed stamp map remain.
-    if (configsEqual(getCurrentRenderConfig(), lastRenderedConfig)) {
-      // nothing to do to canvas
-    } else {
-      // config changed; mark dirty and do NOT update canvas
-      setRenderDirty(true);
-    }
-    // Still update edit UI (selector/preview) if in edit mode
-    if (isEditMode) {
-      if (stampMapData && !editableStampMapData) {
-        editableStampMapData = new Uint8Array(stampMapData);
-      }
-      renderStampSelector();
-      updateActiveStampPreview();
-    }
-    return;
-  }
-
-  // NOTE: Stamp map rendering is now performed by the explicit Render button.
-  // renderIfReady will show the tile grid by default.
-  renderTileGrid(tileData, palette);
-
-  // If we are in edit mode, update selector/preview
-  if (isEditMode) {
+  if (tileData) {
+    renderTileGrid(tileData, palette);
     if (stampMapData && !editableStampMapData) {
       editableStampMapData = new Uint8Array(stampMapData);
     }
@@ -754,209 +780,123 @@ async function renderIfReady() {
   }
 }
 
-/* -------------------------
-   Stamp map rendering (batch mode)
-   Returns a Promise that resolves when complete.
-   ------------------------- */
-function renderStampMap(tileData, palette, stampMapData) {
+function renderStampMap(targetCtx, tileData, palette, mapData, showProgressUI = true) {
   return new Promise((resolve, reject) => {
     renderingInProgress = true;
     cancelRendering = false;
-    
+    targetCtx.canvas.style.display = 'block';
     const [mapW, mapH] = settingMapSize.value.split('x').map(Number);
     const stampSize = parseInt(settingStampSize.value, 10);
-  
-    canvas.width = mapW * stampSize;
-    canvas.height = mapH * stampSize;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-  
-    showProgress(true);
-  
-    const mapView = new DataView(stampMapData.buffer);
+    targetCtx.canvas.width = mapW * stampSize;
+    targetCtx.canvas.height = mapH * stampSize;
+    targetCtx.clearRect(0, 0, targetCtx.canvas.width, targetCtx.canvas.height);
+    if(showProgressUI) showProgress(true);
+    const mapView = new DataView(mapData.buffer);
     const totalStamps = mapW * mapH;
-    const stampsPerBatch = 100;
-    const interBatchDelayMs = 250;
     let currentStamp = 0;
-  
     const processBatch = () => {
       if (cancelRendering) {
-        showProgress(false);
+        if(showProgressUI) showProgress(false);
         renderingInProgress = false;
         reject(new Error('Rendering cancelled'));
         return;
       }
-  
-      const batchEnd = Math.min(currentStamp + stampsPerBatch, totalStamps);
-      
+      const batchEnd = Math.min(currentStamp + 256, totalStamps);
       for (let i = currentStamp; i < batchEnd; i++) {
-        const my = Math.floor(i / mapW);
-        const mx = i % mapW;
-        const destX = mx * stampSize;
-        const destY = my * stampSize;
-  
         if ((i * 2 + 1) >= mapView.byteLength) continue;
+        const my = Math.floor(i / mapW), mx = i % mapW;
         const word = mapView.getUint16(i * 2, false);
-  
-        // Always render stamp graphics (no debug hex option)
-        renderSingleStamp(ctx, word, destX, destY, stampSize, tileData, palette);
+        renderSingleStamp(targetCtx, word, mx * stampSize, my * stampSize, stampSize, tileData, palette);
       }
-  
       currentStamp = batchEnd;
-      updateProgress(currentStamp, totalStamps);
-  
+      if(showProgressUI) updateProgress(currentStamp, totalStamps);
       if (currentStamp < totalStamps) {
-        setTimeout(() => {
-          if (!cancelRendering) requestAnimationFrame(processBatch);
-        }, interBatchDelayMs);
+        requestAnimationFrame(processBatch);
       } else {
-        showProgress(false);
+        if(showProgressUI) showProgress(false);
         renderingInProgress = false;
-        // record that we've displayed a stamp map
-        stampMapDisplayed = true;
-        lastRenderedConfig = getCurrentRenderConfig();
-        setRenderDirty(false);
         resolve();
       }
     };
-  
     requestAnimationFrame(processBatch);
   });
 }
 
-/* -------------------------
-   Grid overlay for edit mode
-   ------------------------- */
-function drawGridOverlay() {
+function drawGridOverlay(targetCtx) {
   const [mapW, mapH] = settingMapSize.value.split('x').map(Number);
   const stampSize = parseInt(settingStampSize.value, 10);
-  
-  ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-  ctx.lineWidth = 1;
-  
-  // Vertical lines
+  targetCtx.save();
+  targetCtx.strokeStyle = 'rgba(255,255,255,0.4)';
+  targetCtx.lineWidth = 1;
   for (let x = 0; x <= mapW; x++) {
-    ctx.beginPath();
-    ctx.moveTo(x * stampSize + 0.5, 0);
-    ctx.lineTo(x * stampSize + 0.5, canvas.height);
-    ctx.stroke();
+    targetCtx.beginPath();
+    targetCtx.moveTo(x * stampSize + 0.5, 0);
+    targetCtx.lineTo(x * stampSize + 0.5, targetCtx.canvas.height);
+    targetCtx.stroke();
   }
-  
-  // Horizontal lines
   for (let y = 0; y <= mapH; y++) {
-    ctx.beginPath();
-    ctx.moveTo(0, y * stampSize + 0.5);
-    ctx.lineTo(canvas.width, y * stampSize + 0.5);
-    ctx.stroke();
+    targetCtx.beginPath();
+    targetCtx.moveTo(0, y * stampSize + 0.5);
+    targetCtx.lineTo(targetCtx.canvas.width, y * stampSize + 0.5);
+    targetCtx.stroke();
   }
-  
-  ctx.restore();
+  targetCtx.restore();
 }
 
-/* -------------------------
-   Simple tile grid renderer
-   ------------------------- */
 function renderTileGrid(data, palette) {
-  const tileW = 8, tileH = 8;
-  const bytesPerTile = 32;
+  const tileW = 8, tileH = 8, bytesPerTile = 32;
   const tilesPerRow = 32;
-
   const numTiles = Math.floor(data.length / bytesPerTile);
   if (numTiles === 0) {
-    canvas.width = 1; canvas.height = 1;
-    ctx.clearRect(0,0,1,1);
+    tileGridCanvas.width = 1; tileGridCanvas.height = 1;
+    tileGridCtx.clearRect(0,0,1,1);
     return;
   }
-
   const imageW = tilesPerRow * tileW;
   const imageH = Math.ceil(numTiles / tilesPerRow) * tileH;
-  canvas.width = imageW;
-  canvas.height = imageH;
-  const img = ctx.createImageData(imageW, imageH);
-
+  tileGridCanvas.width = imageW;
+  tileGridCanvas.height = imageH;
+  const img = tileGridCtx.createImageData(imageW, imageH);
   for (let t = 0; t < numTiles; t++) {
     const tileX = (t % tilesPerRow) * tileW;
     const tileY = Math.floor(t / tilesPerRow) * tileH;
     drawTileOntoImageData(img, t, data, palette, tileX, tileY);
   }
-  ctx.putImageData(img, 0, 0);
-
-  // Since we've painted tiles (not a stamp map), clear stampMapDisplayed
-  stampMapDisplayed = false;
-  lastRenderedConfig = null;
-  setRenderDirty(false);
+  tileGridCtx.putImageData(img, 0, 0);
 }
 
-/* -------------------------
-   Tile drawing helper
-   ------------------------- */
 function drawTileOntoImageData(imgData, tileIndex, tileData, palette, targetX, targetY) {
-  const tileW = 8, tileH = 8;
-  const bytesPerTile = 32;
+  const tileW = 8, tileH = 8, bytesPerTile = 32;
   const base = tileIndex * bytesPerTile;
   if (base + bytesPerTile > tileData.length) return;
-
   const imageW = imgData.width;
   const px = imgData.data;
-
   for (let row = 0; row < tileH; row++) {
     const rowOffset = base + row * 4;
     for (let col = 0; col < tileW; col++) {
       const byteIndex = rowOffset + (col >> 1);
       const b = tileData[byteIndex];
       const pixelVal = (col & 1) === 0 ? ((b >> 4) & 0x0F) : (b & 0x0F);
-
       let R = 0, G = 0, B = 0;
       if (pixelVal !== 0) {
-        // Use palette row offset when available. Genesis palettes are usually organized as rows of 16 colors.
         const paletteIndex = paletteRow * 16 + pixelVal;
         if (palette && paletteIndex < palette.length) {
           const pcol = palette[paletteIndex];
           R = pcol.r; G = pcol.g; B = pcol.b;
         } else {
-          const g = Math.round((pixelVal / 15) * 255);
-          R = G = B = g;
+          R = G = B = Math.round((pixelVal / 15) * 255);
         }
       }
-
-      const x = targetX + col;
-      const y = targetY + row;
-      const di = (y * imageW + x) * 4;
-      px[di] = R;
-      px[di + 1] = G;
-      px[di + 2] = B;
+      const di = ((targetY + row) * imageW + (targetX + col)) * 4;
+      px[di] = R; px[di + 1] = G; px[di + 2] = B;
       px[di + 3] = (pixelVal === 0) ? 0 : 255;
     }
   }
 }
 
 /* -------------------------
-   Edit mode event handlers
+   Event Handlers
    ------------------------- */
-settingEditMode.addEventListener('change', (e) => {
-  isEditMode = e.target.checked;
-  editTools.style.display = isEditMode ? 'block' : 'none';
-  canvas.style.cursor = isEditMode ? 'crosshair' : 'default';
-  
-  if (isEditMode) {
-    if (stampMapData && !editableStampMapData) {
-      editableStampMapData = new Uint8Array(stampMapData);
-    }
-    renderStampSelector();
-    updateActiveStampPreview();
-  }
-  // Do not auto-change the canvas if a stamp map is currently displayed; otherwise render tile grid.
-  if (stampMapDisplayed) {
-    // keep canvas as-is, but update edit UI
-    if (isEditMode) {
-      renderStampSelector();
-      updateActiveStampPreview();
-    }
-  } else {
-    renderIfReady();
-  }
-});
-
 editHFlip.addEventListener('change', (e) => {
   activeHFlip = e.target.checked;
   updateActiveStampPreview();
@@ -967,256 +907,158 @@ editRotation.addEventListener('change', (e) => {
   updateActiveStampPreview();
 });
 
-// Stamp selector click
 stampSelector.addEventListener('click', (e) => {
   if (!tileData || !paletteData) return;
-  
   const rect = stampSelector.getBoundingClientRect();
   const scaleX = stampSelector.width / rect.width;
   const scaleY = stampSelector.height / rect.height;
-  
   const x = (e.clientX - rect.left) * scaleX;
   const y = (e.clientY - rect.top) * scaleY;
-  
   const stampSize = parseInt(settingStampSize.value, 10);
-  const stampsPerRow = 16;
-  
+  const stampsPerRow = Math.floor(stampSelector.width / stampSize);
   const col = Math.floor(x / stampSize);
   const row = Math.floor(y / stampSize);
   const physicalIndex = row * stampsPerRow + col;
-  
   const totalTiles = Math.floor(tileData.length / 32);
-  const tilesPerDim = stampSize / 8;
-  const tilesPerStamp = tilesPerDim * tilesPerDim;
-  const maxPhysicalStamps = Math.floor(totalTiles / tilesPerStamp);
-  
+  const maxPhysicalStamps = Math.floor(totalTiles / (stampSize/8 * stampSize/8));
   if (physicalIndex < maxPhysicalStamps) {
-    // Set activeStampIndex to the logical ID for this physical stamp
     activeStampIndex = (stampSize === 32) ? (physicalIndex * 4 + 4) : (physicalIndex + 4);
     updateActiveStampPreview();
     renderStampSelector();
   }
 });
 
-// Main canvas click (place stamp)
-canvas.addEventListener('click', (e) => {
-  if (!isEditMode || !editableStampMapData) return;
-  
-  const [mapW, mapH] = settingMapSize.value.split('x').map(Number);
-  const stampSize = parseInt(settingStampSize.value, 10);
-  
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-  
-  const x = (e.clientX - rect.left) * scaleX;
-  const y = (e.clientY - rect.top) * scaleY;
-  
-  // Clamp coordinates to handle edge cases and rounding errors
-  let mx = Math.floor(x / stampSize);
-  let my = Math.floor(y / stampSize);
-  mx = Math.max(0, Math.min(mapW - 1, mx));
-  my = Math.max(0, Math.min(mapH - 1, my));
-  
-  const cellIndex = my * mapW + mx;
-  const mapView = new DataView(editableStampMapData.buffer);
-  
-  // Convert logical ID to physical ID for saving
-  let stampIndexToWrite = activeStampIndex;
-  if (stampSize === 32) {
-    stampIndexToWrite = ((activeStampIndex - 1) & ~0x03) + 4;
-  }
-  
-  const word = ((activeHFlip ? 1 : 0) << 15) | ((activeRotation & 0x03) << 13) | (stampIndexToWrite & 0x07FF);
-  
-  // Write to editable map data
-  mapView.setUint16(cellIndex * 2, word, false);
-  
-  // Re-render the cell (user expects immediate visual feedback for edit operations)
-  renderStampMapCell(cellIndex, word);
-  
-  // Redraw grid overlay
-  drawGridOverlay();
+function handleCanvasEdit(e, isClear = false) {
+    if (!editableStampMapData) return;
+    e.preventDefault();
+    const [mapW] = settingMapSize.value.split('x').map(Number);
+    const stampSize = parseInt(settingStampSize.value, 10);
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    let mx = Math.max(0, Math.min(mapW - 1, Math.floor(x / stampSize)));
+    let my = Math.max(0, Math.min(mapW - 1, Math.floor(y / stampSize)));
+    const cellIndex = my * mapW + mx;
+    const mapView = new DataView(editableStampMapData.buffer);
+    let stampIndexToWrite = activeStampIndex;
+    if (stampSize === 32) stampIndexToWrite = ((activeStampIndex - 1) & ~0x03) + 4;
+    const word = isClear ? 0 : (((activeHFlip ? 1 : 0) << 15) | ((activeRotation & 0x03) << 13) | (stampIndexToWrite & 0x07FF));
+    mapView.setUint16(cellIndex * 2, word, false);
+    renderStampMapCell(cellIndex, word);
 
-  // Mark displayed stamp map as dirty since the editable map changed
-  if (stampMapDisplayed) {
-    setRenderDirty(!configsEqual(getCurrentRenderConfig(), lastRenderedConfig));
-  }
+    if (showGridToggle.checked) {
+        const destX = mx * stampSize, destY = my * stampSize;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(destX + 0.5, destY + 0.5, stampSize, stampSize);
+        ctx.restore();
+    }
+}
+
+canvas.addEventListener('click', (e) => handleCanvasEdit(e, false));
+canvas.addEventListener('contextmenu', (e) => handleCanvasEdit(e, true));
+
+showGridToggle.addEventListener('change', () => {
+    if (stampMapDisplayed && (editableStampMapData || stampMapData)) {
+        const mapToRedraw = editableStampMapData || stampMapData;
+        const palette = paletteData ? parsePaletteFromData(paletteData) : null;
+        renderStampMap(ctx, tileData, palette, mapToRedraw, false).then(() => {
+            if (showGridToggle.checked) {
+                drawGridOverlay(ctx);
+            }
+        });
+    }
 });
 
-// Main canvas right-click (clear stamp)
-canvas.addEventListener('contextmenu', (e) => {
-  e.preventDefault();
-  if (!isEditMode || !editableStampMapData) return;
-  
-  const [mapW, mapH] = settingMapSize.value.split('x').map(Number);
-  const stampSize = parseInt(settingStampSize.value, 10);
-  
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-  
-  const x = (e.clientX - rect.left) * scaleX;
-  const y = (e.clientY - rect.top) * scaleY;
-  
-  // Clamp coordinates to handle edge cases and rounding errors
-  let mx = Math.floor(x / stampSize);
-  let my = Math.floor(y / stampSize);
-  mx = Math.max(0, Math.min(mapW - 1, mx));
-  my = Math.max(0, Math.min(mapH - 1, my));
-  
-  const cellIndex = my * mapW + mx;
-  const mapView = new DataView(editableStampMapData.buffer);
-  
-  // Clear cell (word = 0)
-  mapView.setUint16(cellIndex * 2, 0, false);
-  
-  // Re-render the cell (user expects immediate visual feedback for edit operations)
-  renderStampMapCell(cellIndex, 0);
-  
-  // Redraw grid overlay
-  drawGridOverlay();
-
-  // Mark displayed stamp map as dirty since the editable map changed
-  if (stampMapDisplayed) {
-    setRenderDirty(!configsEqual(getCurrentRenderConfig(), lastRenderedConfig));
-  }
-});
-
-// Map action buttons
 btnNewMap.addEventListener('click', () => {
   if (!confirm('Create a new empty map? This will clear all current data.')) return;
-  
   const [mapW, mapH] = settingMapSize.value.split('x').map(Number);
-  const totalStamps = mapW * mapH;
-  
-  // Create empty map (all zeros)
-  editableStampMapData = new Uint8Array(totalStamps * 2);
+  editableStampMapData = new Uint8Array(mapW * mapH * 2);
   stampMapData = new Uint8Array(editableStampMapData);
   stampMapFilename = null;
-  btnRenderMap.disabled = false; // new map is renderable
-
-  // Creating a new map makes the canvas "dirty" relative to any previously displayed render
-  setRenderDirty(true);
-
-  renderIfReady();
+  btnRenderMap.disabled = !tileData;
+  const palette = paletteData ? parsePaletteFromData(paletteData) : null;
+  renderStampMap(ctx, tileData, palette, editableStampMapData, true).then(() => {
+    if (showGridToggle.checked) drawGridOverlay(ctx);
+    stampMapDisplayed = true;
+  });
 });
 
 btnClearMap.addEventListener('click', () => {
   if (!editableStampMapData || !confirm('Clear entire map? This cannot be undone.')) return;
-  
-  // Fill with zeros
   editableStampMapData.fill(0);
-
-  // Mark dirty if a stamp map was displayed
-  if (stampMapDisplayed) setRenderDirty(true);
-
-  renderIfReady();
+  const palette = paletteData ? parsePaletteFromData(paletteData) : null;
+  renderStampMap(ctx, tileData, palette, editableStampMapData, true).then(() => {
+    if (showGridToggle.checked) drawGridOverlay(ctx);
+    stampMapDisplayed = true;
+  });
 });
 
 btnSaveMap.addEventListener('click', () => {
-  if (!editableStampMapData) {
-    alert('No map data to save. Load or create a map first.');
-    return;
-  }
-  
-  // Create blob and download
+  if (!editableStampMapData) { alert('No map data to save.'); return; }
   const blob = new Blob([editableStampMapData], { type: 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  const filename = `genesis-map-${new Date().toISOString().replace(/[:.]/g,'-')}.bin`;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  a.download = `genesis-map-${new Date().toISOString().replace(/[:.]/g,'-')}.bin`;
+  document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  
-  alert(`Map saved as ${filename}`);
+  alert(`Map saved as ${a.download}`);
 });
 
-// Settings change handlers - ensure they work in edit mode
 settingMapSize.addEventListener('change', () => {
-  if (isEditMode && editableStampMapData) {
-    // Convert map data to new size (simple truncation/expansion)
+  if (editableStampMapData) {
     const [newW, newH] = settingMapSize.value.split('x').map(Number);
-    const newSize = newW * newH * 2;
-    const newData = new Uint8Array(newSize);
-    
-    // Copy data (truncate or expand)
-    const copySize = Math.min(editableStampMapData.length, newSize);
-    newData.set(editableStampMapData.subarray(0, copySize));
-    
+    const newData = new Uint8Array(newW * newH * 2);
+    newData.set(editableStampMapData.subarray(0, Math.min(editableStampMapData.length, newData.length)));
     editableStampMapData = newData;
     stampMapData = new Uint8Array(newData);
     btnRenderMap.disabled = false;
   }
   clampActiveStampIndex();
-
-  // If a stamp map is displayed, mark dirty and do not update the canvas automatically
   if (stampMapDisplayed) {
     setRenderDirty(!configsEqual(getCurrentRenderConfig(), lastRenderedConfig));
-  } else {
-    renderIfReady();
   }
 });
 
 settingStampSize.addEventListener('change', () => {
   clampActiveStampIndex();
-  if (isEditMode) {
-    renderStampSelector();
-    updateActiveStampPreview();
-  }
-
-  // If a stamp map is currently displayed, mark dirty and do not update canvas automatically
+  renderStampSelector();
+  updateActiveStampPreview();
   if (stampMapDisplayed) {
     setRenderDirty(!configsEqual(getCurrentRenderConfig(), lastRenderedConfig));
-  } else {
-    renderIfReady();
   }
 });
 
-// Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
-  if (!isEditMode || !editableStampMapData) return;
-  
-  // Arrow keys to navigate active stamp (physical stamps)
-  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+  if (!editableStampMapData) return;
+  if (e.key.startsWith('Arrow')) {
     e.preventDefault();
     const stampSize = parseInt(settingStampSize.value, 10);
-    const totalTiles = Math.floor(tileData.length / 32);
-    const tilesPerDim = stampSize / 8;
-    const tilesPerStamp = tilesPerDim * tilesPerDim;
-    const maxPhysicalStamps = Math.floor(totalTiles / tilesPerStamp);
-    const stampsPerRow = 16;
-    
-    const currentPhysicalIndex = (stampSize === 32) ? 
-      Math.floor((activeStampIndex - 1) / 4) : (activeStampIndex - 1);
-    
+    const totalTiles = tileData ? Math.floor(tileData.length / 32) : 0;
+    const maxPhysicalStamps = Math.floor(totalTiles / (stampSize/8*stampSize/8));
+    const stampsPerRow = Math.floor(stampSelector.width / stampSize);
+    const currentPhysicalIndex = (stampSize === 32) ? Math.floor((activeStampIndex - 1) / 4) : (activeStampIndex - 1);
     let newPhysicalIndex = currentPhysicalIndex;
-    if (e.key === 'ArrowUp') {
-      newPhysicalIndex = Math.max(0, currentPhysicalIndex - stampsPerRow);
-    } else {
-      newPhysicalIndex = Math.min(maxPhysicalStamps - 1, currentPhysicalIndex + stampsPerRow);
-    }
-    
+    if (e.key === 'ArrowUp') newPhysicalIndex = Math.max(0, currentPhysicalIndex - stampsPerRow);
+    else if (e.key === 'ArrowDown') newPhysicalIndex = Math.min(maxPhysicalStamps - 1, currentPhysicalIndex + stampsPerRow);
+    else if (e.key === 'ArrowLeft') newPhysicalIndex = Math.max(0, currentPhysicalIndex - 1);
+    else if (e.key === 'ArrowRight') newPhysicalIndex = Math.min(maxPhysicalStamps - 1, currentPhysicalIndex + 1);
     if (newPhysicalIndex !== currentPhysicalIndex) {
-      activeStampIndex = (stampSize === 32) ? 
-        (newPhysicalIndex * 4 + 4) : (newPhysicalIndex + 4);
+      activeStampIndex = (stampSize === 32) ? (newPhysicalIndex * 4 + 4) : (newPhysicalIndex + 4);
       updateActiveStampPreview();
       renderStampSelector();
     }
   }
-  
-  // Space to toggle H-flip
   if (e.key === ' ') {
     e.preventDefault();
     activeHFlip = !activeHFlip;
     editHFlip.checked = activeHFlip;
     updateActiveStampPreview();
   }
-  
-  // R to cycle rotation
   if (e.key.toLowerCase() === 'r') {
     e.preventDefault();
     activeRotation = (activeRotation + 1) % 4;
@@ -1228,55 +1070,27 @@ document.addEventListener('keydown', (e) => {
 /* -------------------------
    68K Assembly generation & UI
    ------------------------- */
-function mapSourceForAssembly() {
-  return (isEditMode && editableStampMapData) ? editableStampMapData : stampMapData;
-}
-
 function generate68kAssembly(mapUint8, mapW, mapH, options = {}) {
-  // mapUint8 is a Uint8Array holding big-endian words (word 0 at byte 0)
   const dv = new DataView(mapUint8.buffer, mapUint8.byteOffset, mapUint8.byteLength);
-  const includeComments = !!options.includeComments;
-  const labelAtTop = !!options.labelAtTop;
-  let wordsPerLine = parseInt(options.wordsPerLine || 0, 10);
-  if (!wordsPerLine || wordsPerLine <= 0) wordsPerLine = mapW; // default to map width
-
-  const total = mapW * mapH;
+  const { includeComments, labelAtTop } = options;
+  let wordsPerLine = parseInt(options.wordsPerLine || 0, 10) || mapW;
   const lines = [];
-
   if (labelAtTop) {
-    const label = options.labelName ? sanitizeLabel(options.labelName) : 'stamp_map';
-    lines.push(label + ':');
+    lines.push((options.labelName ? sanitizeLabel(options.labelName) : 'stamp_map') + ':');
   }
-
-  // Iterate row-major and emit groups of wordsPerLine per line (by default, one assembly line per map row)
   for (let row = 0; row < mapH; row++) {
     let rowWords = [];
     for (let col = 0; col < mapW; col++) {
-      const idx = row * mapW + col;
-      const byteOff = idx * 2;
-      let w = 0;
-      if ((byteOff + 1) < dv.byteLength) {
-        w = dv.getUint16(byteOff, false); // big-endian (Motorola)
-      } else {
-        w = 0;
-      }
+      const byteOff = (row * mapW + col) * 2;
+      const w = (byteOff + 1) < dv.byteLength ? dv.getUint16(byteOff, false) : 0;
       rowWords.push('$' + w.toString(16).toUpperCase().padStart(4, '0'));
     }
-
-    // If wordsPerLine equals mapW, just emit one dc.w line per row
-    if (wordsPerLine === mapW) {
-      const comment = includeComments ? ` ; row ${row}` : '';
-      lines.push('  dc.w ' + rowWords.join(', ') + comment);
-    } else {
-      // split rowWords into chunks of wordsPerLine
-      for (let i = 0; i < rowWords.length; i += wordsPerLine) {
-        const chunk = rowWords.slice(i, i + wordsPerLine);
-        const comment = includeComments ? ` ; row ${row} cols ${i}-${Math.min(rowWords.length-1,i+wordsPerLine-1)}` : '';
-        lines.push('  dc.w ' + chunk.join(', ') + comment);
-      }
+    for (let i = 0; i < rowWords.length; i += wordsPerLine) {
+      const chunk = rowWords.slice(i, i + wordsPerLine);
+      const comment = includeComments ? ` ; row ${row} cols ${i}-${Math.min(rowWords.length-1,i+wordsPerLine-1)}` : '';
+      lines.push('  dc.w ' + chunk.join(', ') + (wordsPerLine === mapW ? ` ; row ${row}` : comment));
     }
   }
-
   return lines.join('\n');
 }
 
@@ -1294,64 +1108,43 @@ function closeAssemblyModal() {
 }
 
 btnView68k.addEventListener('click', () => {
-  const map = mapSourceForAssembly();
-  if (!map) {
-    alert('No stamp map loaded. Load a map or create one in edit mode first.');
-    return;
-  }
-
+  const map = editableStampMapData || stampMapData;
+  if (!map) { alert('No stamp map loaded.'); return; }
   const [mapW, mapH] = settingMapSize.value.split('x').map(Number);
-  const includeComments = optIncludeComments.checked;
-  const labelAtTop = optLabelAtTop.checked;
-  const wordsPerLine = parseInt(optWordsPerLine.value || '0', 10);
-
-  // Generate assembly text
   try {
     const asm = generate68kAssembly(map, mapW, mapH, {
-      includeComments,
-      labelAtTop,
-      wordsPerLine,
+      includeComments: optIncludeComments.checked,
+      labelAtTop: optLabelAtTop.checked,
+      wordsPerLine: parseInt(optWordsPerLine.value || '0', 10),
       labelName: stampMapFilename
     });
-    openAssemblyModal(asm, stampMapFilename || ((isEditMode && editableStampMapData) ? 'editable map' : 'loaded map'));
+    openAssemblyModal(asm, stampMapFilename || 'editable map');
   } catch (err) {
     console.error('Assembly generation failed', err);
-    alert('Failed to generate assembly: see console.');
+    alert('Failed to generate assembly.');
   }
 });
 
 btnAsmClose.addEventListener('click', closeAssemblyModal);
 
-// copy to clipboard
 btnAsmCopy.addEventListener('click', async () => {
   try {
     await navigator.clipboard.writeText(asmText.value);
     btnAsmCopy.textContent = 'Copied ✓';
     setTimeout(() => btnAsmCopy.textContent = 'Copy', 1200);
-  } catch (err) {
-    console.error('Copy failed', err);
-    alert('Copy failed — your browser may block clipboard writes.');
-  }
+  } catch (err) { console.error('Copy failed', err); alert('Copy failed.'); }
 });
 
-// download as .asm
 btnAsmDownload.addEventListener('click', () => {
-  const text = asmText.value;
-  if (!text) return;
-  const blob = new Blob([text], { type: 'text/plain' });
+  const blob = new Blob([asmText.value], { type: 'text/plain' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  const nameSuffix = (isEditMode && editableStampMapData) ? 'editable' : 'loaded';
-  const filename = `stamp_map_${nameSuffix}_${new Date().toISOString().replace(/[:.]/g,'-')}.asm`;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  a.download = `stamp_map_${new Date().toISOString().replace(/[:.]/g,'-')}.asm`;
+  document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 
-/* Close modal when clicking backdrop outside the modal */
 asmModalBackdrop.addEventListener('click', (ev) => {
   if (ev.target === asmModalBackdrop) closeAssemblyModal();
 });
@@ -1360,58 +1153,40 @@ asmModalBackdrop.addEventListener('click', (ev) => {
    Stamp palette export
    ------------------------- */
 btnExportStampPalette.addEventListener('click', () => {
-  if (!tileData || !paletteData) {
-    alert('Need both tiles and palette loaded to export the stamp palette.');
-    return;
-  }
-
+  if (!tileData || !paletteData) { alert('Need tiles and palette loaded.'); return; }
   const stampSize = parseInt(settingStampSize.value, 10);
   const palette = parsePaletteFromData(paletteData);
-
   const totalTiles = Math.floor(tileData.length / 32);
-  const tilesPerDim = stampSize / 8;
-  const tilesPerStamp = tilesPerDim * tilesPerDim;
-  const maxPhysicalStamps = Math.floor(totalTiles / tilesPerStamp);
-
+  const maxPhysicalStamps = Math.floor(totalTiles / (stampSize/8*stampSize/8));
   const stampsPerRow = 16;
   const rows = Math.ceil(maxPhysicalStamps / stampsPerRow);
-
   const tempCanvas = document.createElement('canvas');
   tempCanvas.width = stampsPerRow * stampSize;
   tempCanvas.height = rows * stampSize;
   const tctx = tempCanvas.getContext('2d');
   tctx.imageSmoothingEnabled = false;
-
-  // Do NOT draw a background (keep transparency)
-
   for (let i = 0; i < maxPhysicalStamps; i++) {
     const row = Math.floor(i / stampsPerRow);
     const col = i % stampsPerRow;
-    const x = col * stampSize;
-    const y = row * stampSize;
     const logicalID = (stampSize === 32) ? (i * 4 + 4) : (i + 4);
-    renderSingleStamp(tctx, logicalID, x, y, stampSize, tileData, palette);
+    renderSingleStamp(tctx, logicalID, col * stampSize, row * stampSize, stampSize, tileData, palette);
   }
-
   tempCanvas.toBlob((blob) => {
-    if (!blob) {
-      alert('Failed to create PNG');
-      return;
-    }
+    if (!blob) { alert('Failed to create PNG'); return; }
     const a = document.createElement('a');
     const url = URL.createObjectURL(blob);
     a.href = url;
     a.download = `stamp_palette_${new Date().toISOString().replace(/[:.]/g,'-')}.png`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }, 'image/png');
 });
 
 /* -------------------------
-   End of code
+   Initial Load
    ------------------------- */
+clearMainCanvas();
+renderIfReady();
 
 </script>
 </body>
