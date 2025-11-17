@@ -1,3 +1,4 @@
+<!-- Updated based on genesis_tile_viewer.html :contentReference[oaicite:0]{index=0} -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -213,6 +214,44 @@
 
     /* Hint next to render button */
     #renderHint { margin-left: 10px; font-size: 0.85rem; color: #ffab40; display: none; vertical-align: middle; }
+
+    /* -------------------------
+       Zoom & Pan container
+       ------------------------- */
+    #canvasContainer {
+      position: relative;
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+    }
+
+    #canvasContainer.dragging {
+      cursor: grabbing;
+    }
+
+    #canvas {
+      position: absolute;
+      transform-origin: 0 0;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    /* Zoom indicator */
+    .zoom-indicator {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      color: var(--text-primary);
+      padding: 5px 10px;
+      border-radius: 3px;
+      font-size: 0.85rem;
+      pointer-events: none;
+      z-index: 100;
+      font-family: var(--font-family);
+    }
+
   </style>
 </head>
 <body>
@@ -276,7 +315,10 @@
 
     <!-- Main Canvas Area -->
     <main class="main-content">
-      <canvas id="canvas" width="256" height="256"></canvas>
+      <div id="canvasContainer">
+        <canvas id="canvas" width="256" height="256"></canvas>
+        <div id="zoomIndicator" class="zoom-indicator">100%</div>
+      </div>
     </main>
 
     <!-- Right Sidebar: Edit Tools -->
@@ -377,6 +419,10 @@ const progressBar = document.getElementById('progressBar');
 const progressFill = document.getElementById('progressFill');
 const progressText = document.getElementById('progressText');
 
+// New container references
+const canvasContainer = document.getElementById('canvasContainer');
+const zoomIndicator = document.getElementById('zoomIndicator');
+
 // Edit mode elements
 const editTools = document.getElementById('editTools');
 const editHFlip = document.getElementById('editHFlip');
@@ -421,6 +467,14 @@ let stampMapDisplayed = false;
 let lastRenderedConfig = null;
 let renderDirty = false;
 
+// Zoom and pan state
+let zoom = 1;
+let panX = 0;
+let panY = 0;
+let isDragging = false;
+let dragStartX = 0;
+let dragStartY = 0;
+
 function sanitizeLabel(name) {
   if (!name) return 'stamp_map';
   const base = name.replace(/\.[^/.]+$/, '');
@@ -458,6 +512,50 @@ function setRenderDirty(flag) {
   renderDirty = flag;
   renderHint.style.display = flag ? 'inline' : 'none';
   if (!btnRenderMap.disabled) btnRenderMap.disabled = false;
+}
+
+/* -------------------------
+   Zoom / Pan helpers
+   ------------------------- */
+function applyCanvasTransform() {
+  canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+}
+
+function updateZoomIndicator() {
+  zoomIndicator.textContent = `${Math.round(zoom * 100)}%`;
+}
+
+function zoomAtPoint(factor, mouseX, mouseY) {
+  const containerRect = canvasContainer.getBoundingClientRect();
+  const mouseXInContainer = mouseX - containerRect.left;
+  const mouseYInContainer = mouseY - containerRect.top;
+  
+  // Calculate the point in canvas coordinates before zoom
+  const canvasXBefore = (mouseXInContainer - panX) / zoom;
+  const canvasYBefore = (mouseYInContainer - panY) / zoom;
+  
+  // Apply zoom limits
+  const newZoom = Math.max(0.5, Math.min(8, zoom * factor));
+  if (newZoom === zoom) return;
+  
+  // Calculate new pan to keep the same point under mouse
+  const newPanX = mouseXInContainer - canvasXBefore * newZoom;
+  const newPanY = mouseYInContainer - canvasYBefore * newZoom;
+  
+  zoom = newZoom;
+  panX = newPanX;
+  panY = newPanY;
+  
+  applyCanvasTransform();
+  updateZoomIndicator();
+}
+
+function resetView() {
+  zoom = 1;
+  panX = 0;
+  panY = 0;
+  applyCanvasTransform();
+  updateZoomIndicator();
 }
 
 function clearMainCanvas() {
@@ -815,6 +913,7 @@ function renderStampMap(targetCtx, tileData, palette, mapData, showProgressUI = 
       } else {
         if(showProgressUI) showProgress(false);
         renderingInProgress = false;
+        applyCanvasTransform(); // Apply zoom/pan after rendering
         resolve();
       }
     };
@@ -928,39 +1027,102 @@ stampSelector.addEventListener('click', (e) => {
   }
 });
 
+/* Zoom-aware canvas edit function (replaces previous handleCanvasEdit) */
 function handleCanvasEdit(e, isClear = false) {
-    if (!editableStampMapData) return;
-    e.preventDefault();
-    const [mapW] = settingMapSize.value.split('x').map(Number);
-    const stampSize = parseInt(settingStampSize.value, 10);
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
-    let mx = Math.max(0, Math.min(mapW - 1, Math.floor(x / stampSize)));
-    let my = Math.max(0, Math.min(mapW - 1, Math.floor(y / stampSize)));
-    const cellIndex = my * mapW + mx;
-    const mapView = new DataView(editableStampMapData.buffer);
-    let stampIndexToWrite = activeStampIndex;
-    if (stampSize === 32) stampIndexToWrite = ((activeStampIndex - 1) & ~0x03) + 4;
-    const word = isClear ? 0 : (((activeHFlip ? 1 : 0) << 15) | ((activeRotation & 0x03) << 13) | (stampIndexToWrite & 0x07FF));
-    mapView.setUint16(cellIndex * 2, word, false);
-    renderStampMapCell(cellIndex, word);
-
-    if (showGridToggle.checked) {
-        const destX = mx * stampSize, destY = my * stampSize;
-        ctx.save();
-        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(destX + 0.5, destY + 0.5, stampSize, stampSize);
-        ctx.restore();
-    }
+  if (!editableStampMapData) return;
+  e.preventDefault();
+  
+  const [mapW, mapH] = settingMapSize.value.split('x').map(Number);
+  const stampSize = parseInt(settingStampSize.value, 10);
+  
+  // Get container rect for accurate coordinate conversion
+  const containerRect = canvasContainer.getBoundingClientRect();
+  
+  // Convert mouse position to canvas coordinates accounting for zoom/pan
+  const mouseX = e.clientX - containerRect.left;
+  const mouseY = e.clientY - containerRect.top;
+  const canvasX = (mouseX - panX) / zoom;
+  const canvasY = (mouseY - panY) / zoom;
+  
+  // Calculate which stamp cell was clicked
+  let mx = Math.floor(canvasX / stampSize);
+  let my = Math.floor(canvasY / stampSize);
+  
+  // Clamp to valid map bounds
+  mx = Math.max(0, Math.min(mapW - 1, mx));
+  my = Math.max(0, Math.min(mapH - 1, my));
+  
+  const cellIndex = my * mapW + mx;
+  const mapView = new DataView(editableStampMapData.buffer);
+  let stampIndexToWrite = activeStampIndex;
+  if (stampSize === 32) stampIndexToWrite = ((activeStampIndex - 1) & ~0x03) + 4;
+  
+  const word = isClear ? 0 : (((activeHFlip ? 1 : 0) << 15) | ((activeRotation & 0x03) << 13) | (stampIndexToWrite & 0x07FF));
+  mapView.setUint16(cellIndex * 2, word, false);
+  
+  renderStampMapCell(cellIndex, word);
+  
+  if (showGridToggle.checked) {
+    const destX = mx * stampSize;
+    const destY = my * stampSize;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(destX + 0.5, destY + 0.5, stampSize, stampSize);
+    ctx.restore();
+  }
 }
 
 canvas.addEventListener('click', (e) => handleCanvasEdit(e, false));
 canvas.addEventListener('contextmenu', (e) => handleCanvasEdit(e, true));
 
+/* -------------------------
+   New zoom & pan event listeners
+   ------------------------- */
+// Wheel zoom handler
+canvasContainer.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const factor = e.deltaY > 0 ? 0.9 : 1.1;
+  zoomAtPoint(factor, e.clientX, e.clientY);
+});
+
+// Drag pan handlers
+canvasContainer.addEventListener('mousedown', (e) => {
+  if (e.button === 0 && stampMapDisplayed) { // Left mouse button and map exists
+    isDragging = true;
+    dragStartX = e.clientX - panX;
+    dragStartY = e.clientY - panY;
+    canvasContainer.classList.add('dragging');
+  }
+});
+
+canvasContainer.addEventListener('mousemove', (e) => {
+  if (isDragging) {
+    panX = e.clientX - dragStartX;
+    panY = e.clientY - dragStartY;
+    applyCanvasTransform();
+  }
+});
+
+canvasContainer.addEventListener('mouseup', () => {
+  isDragging = false;
+  canvasContainer.classList.remove('dragging');
+});
+
+canvasContainer.addEventListener('mouseleave', () => {
+  isDragging = false;
+  canvasContainer.classList.remove('dragging');
+});
+
+// Double-click to reset view
+canvasContainer.addEventListener('dblclick', (e) => {
+  e.preventDefault();
+  resetView();
+});
+
+/* -------------------------
+   Remaining Event handlers
+   ------------------------- */
 showGridToggle.addEventListener('change', () => {
     if (stampMapDisplayed && (editableStampMapData || stampMapData)) {
         const mapToRedraw = editableStampMapData || stampMapData;
@@ -984,6 +1146,7 @@ btnNewMap.addEventListener('click', () => {
   renderStampMap(ctx, tileData, palette, editableStampMapData, true).then(() => {
     if (showGridToggle.checked) drawGridOverlay(ctx);
     stampMapDisplayed = true;
+    resetView(); // Reset zoom/pan for new map
   });
 });
 
@@ -994,6 +1157,7 @@ btnClearMap.addEventListener('click', () => {
   renderStampMap(ctx, tileData, palette, editableStampMapData, true).then(() => {
     if (showGridToggle.checked) drawGridOverlay(ctx);
     stampMapDisplayed = true;
+    resetView(); // Reset zoom/pan for cleared map
   });
 });
 
@@ -1187,6 +1351,7 @@ btnExportStampPalette.addEventListener('click', () => {
    ------------------------- */
 clearMainCanvas();
 renderIfReady();
+updateZoomIndicator(); // Initialize zoom indicator
 
 </script>
 </body>
