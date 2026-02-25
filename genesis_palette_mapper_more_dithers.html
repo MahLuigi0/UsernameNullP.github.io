@@ -3,128 +3,121 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Sega Genesis Palette Mapper — More Dithers (Fixed)</title>
+<title>Genesis Palette Mapper</title>
 <style>
-  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; padding: 18px; }
-  .row { display:flex; gap:18px; align-items:flex-start; }
-  canvas { border:1px solid #ccc; image-rendering: pixelated; }
-  .palette-grid { display:grid; grid-template-columns: repeat(32, 18px); gap:2px; }
-  .swatch { width:18px; height:18px; border:1px solid rgba(0,0,0,0.08); }
-  .colors-list { max-height: 320px; overflow:auto; width:420px; border:1px solid #eee; padding:8px; }
-  .controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
-  label { display:flex; gap:6px; align-items:center; }
-  input[type="number"] { width:80px; padding:6px; }
-  button { padding:8px 12px; border-radius:6px; border:1px solid #bbb; background: #fafafa; cursor:pointer; }
-  .stats { margin-top:8px; font-family:monospace; }
-  .highlight { outline:2px solid #333; }
-  .small { font-size:0.85rem; color:#444; }
-  .control-group { display:flex; gap:8px; align-items:center; }
-  #rgbControls { gap: 12px; align-items:center; display:none; } /* hidden by default */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font: 13px/1.4 system-ui, sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  #toolbar { display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: #f0f0f0; border-bottom: 1px solid #ccc; flex-wrap: wrap; flex-shrink: 0; }
+  #toolbar label { display: flex; align-items: center; gap: 4px; }
+  #toolbar input[type=number] { width: 60px; }
+  #toolbar button { padding: 3px 10px; cursor: pointer; }
+  #toolbar button:disabled { opacity: 0.4; cursor: default; }
+  #toolbar .sep { border-left: 1px solid #bbb; align-self: stretch; margin: 0 2px; }
+  #procTime { color: #888; font-size: 11px; }
+  #stats { font-size: 11px; color: #555; }
+  #dropZone { border: 2px dashed #aaa; padding: 4px 10px; cursor: pointer; border-radius: 3px; font-size: 12px; color: #555; white-space: nowrap; }
+  #dropZone:hover, #dropZone.drag-over { border-color: #333; color: #000; }
+  #fileInput { display: none; }
+  #main { display: flex; flex: 1; overflow: hidden; }
+  #canvasArea { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  #viewBar { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: #f8f8f8; border-bottom: 1px solid #ddd; flex-shrink: 0; font-size: 12px; }
+  #viewBar button, #zoomBtns button { padding: 2px 7px; cursor: pointer; }
+  #viewBar button.active, #zoomBtns button.active { font-weight: bold; outline: 2px solid #555; }
+  #canvasPanels { flex: 1; overflow: hidden; position: relative; }
+  #sideBySideView { display: flex; gap: 10px; padding: 10px; overflow: auto; height: 100%; }
+  .canvas-pane { display: flex; flex-direction: column; gap: 4px; }
+  .pane-label { font-size: 11px; color: #666; }
+  .canvas-wrap { overflow: auto; border: 1px solid #ccc; background: repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 0 0 / 10px 10px; }
+  canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+  #compareView { display: none; flex-direction: column; gap: 6px; padding: 10px; overflow: auto; height: 100%; }
+  #compareView.active { display: flex; }
+  #compareLabels { display: flex; justify-content: space-between; font-size: 11px; color: #666; }
+  #compareContainer { position: relative; overflow: hidden; border: 1px solid #ccc; cursor: col-resize; user-select: none; background: repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 0 0 / 10px 10px; }
+  #compareContainer canvas { display: block; position: absolute; top: 0; left: 0; }
+  #compareOrigCanvas { position: relative; z-index: 1; }
+  #compareOutCanvas { z-index: 2; }
+  #compareDivider { position: absolute; top: 0; bottom: 0; width: 2px; background: #333; z-index: 10; }
+  #spinner { display: none; position: absolute; inset: 0; background: rgba(255,255,255,0.7); align-items: center; justify-content: center; z-index: 100; }
+  #spinner.active { display: flex; }
+  #paletteSection { border-top: 1px solid #ddd; flex-shrink: 0; }
+  #paletteToggle { padding: 4px 8px; font-size: 11px; cursor: pointer; background: #f8f8f8; display: flex; justify-content: space-between; user-select: none; }
+  #paletteToggle:hover { background: #eee; }
+  #paletteBody { display: none; padding: 6px 8px; }
+  #paletteBody.open { display: block; }
+  #paletteGrid { display: grid; grid-template-columns: repeat(32, 16px); gap: 1px; }
+  .swatch { width: 16px; height: 16px; }
+  .swatch.highlight { outline: 2px solid #000; position: relative; z-index: 1; }
 </style>
 </head>
 <body>
-<h2>Sega Genesis Palette Mapper — More Dithers (Fixed)</h2>
-<p>Upload a sprite. Dithers included: ordered (2×2/3×3/4×4/8×8/16×16), blue-noise, threshold, random, serpentine error-diffusion, standard error-diffusion kernels, dot-diffusion (simple), Riemersma-style (Morton order) diffusion, perceptual distance mapping, and a multipass hybrid.
 
-<div class="controls">
+<div id="toolbar">
+  <div id="dropZone" onclick="fileInput.click()">Drop / click / paste image</div>
   <input id="fileInput" type="file" accept="image/*" />
-  <label> Dither:
-    <select id="ditherSelect">
-      <option value="none">None</option>
-      <optgroup label="Ordered">
-        <option value="ordered_2">Ordered 2×2</option>
-        <option value="ordered_3">Ordered 3×3</option>
-        <option value="ordered_4">Ordered 4×4</option>
-        <option value="ordered_8">Ordered 8×8</option>
-        <option value="ordered_16">Ordered 16×16</option>
-      </optgroup>
-      <option value="blue_noise">Blue-noise tile</option>
-      <option value="threshold">Threshold (luminance)</option>
-      <option value="random">Noise</option>
-      <optgroup label="Error diffusion">
-        <option value="floyd">Floyd–Steinberg</option>
-        <option value="serpentine_floyd">Serpentine Floyd</option>
-        <option value="atkinson">Atkinson</option>
-        <option value="jarvis">Jarvis–Judice–Ninke (JJN)</option>
-        <option value="stucki">Stucki</option>
-        <option value="sierra">Sierra</option>
-        <option value="burkes">Burkes</option>
-      </optgroup>
-      <option value="perceptual_floyd">Perceptual (YCbCr) + Floyd</option>
-      <!-- Removed Channel-separated diffusion option -->
-      <!-- <option value="channel_separated">Channel-separated diffusion</option> -->
-      <option value="dot_diffusion">Dot-diffusion (block)</option>
-      <option value="riemersma">Riemersma/Morton-order diffusion</option>
-      <option value="multipass_hybrid">Multi-pass hybrid (ordered → serpentine)</option>
-    </select>
-  </label>
-
-  <label>Limit colors:
-    <input id="limitCheck" type="checkbox" />
-  </label>
-  <label>Max colors:
-    <input id="maxColorsInput" type="number" min="2" max="512" value="32" />
-  </label>
-
-  <label> Prefer diverse colors:
-    <input id="diverseCheck" type="checkbox" />
-  </label>
-
-  <!-- NEW: RGB balance controls (wrapped and hidden by default; shown only when "Prefer diverse colors" is checked) -->
-  <div id="rgbControls" class="control-group">
-    <label class="small">Balance by RGB:
-      <input id="rgbBalanceCheck" type="checkbox" title="Bias selection away from the dominant channel (auto) or a selected channel (manual)" />
-    </label>
-    <label class="small">Mode:
-      <select id="rgbBalanceAxis" title="Choose 'auto' to detect dominant channel, or pick a channel manually" style="padding:6px;">
-        <option value="auto">Auto (detect dominant)</option>
-        <option value="red">Manual: Red</option>
-        <option value="green">Manual: Green</option>
-        <option value="blue">Manual: Blue</option>
-        <option value="none">None</option>
-      </select>
-    </label>
-    <label class="small">Strength:
-      <input id="rgbBalanceStrength" type="range" min="0" max="100" value="50" />
-    </label>
-  </div>
-
-  <button id="processBtn" disabled>Process / Remap</button>
-  <button id="downloadBtn" disabled>Download Remapped Image</button>
+  <span class="sep"></span>
+  <label><input type="checkbox" id="limitCheck" /> Limit colors</label>
+  <label>Max: <input type="number" id="maxColorsInput" min="2" max="512" value="32" /></label>
+  <span class="sep"></span>
+  <button id="processBtn" disabled>Process</button>
+  <button id="downloadBtn" disabled>Download</button>
+  <label>Scale: <select id="downloadScale">
+    <option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option>
+  </select></label>
+  <span class="sep"></span>
+  <span id="stats">orig: <b id="origCount">—</b> · out: <b id="procCount">—</b> · allowed: <b id="allowedCount">512</b> · <span id="imgDims">—</span></span>
+  <span id="procTime"></span>
 </div>
 
-<div class="stats" id="statsArea">
-  Original unique colors: <span id="origCount">0</span> &nbsp; | &nbsp;
-  Processed unique colors: <span id="procCount">0</span> &nbsp; | &nbsp;
-  Palette colors allowed: <span id="allowedCount">512</span>
-</div>
+<div id="main">
+  <div id="canvasArea">
+    <div id="viewBar">
+      View: <button id="viewSideBySide" class="active">Side-by-side</button>
+            <button id="viewCompare">Compare</button>
+      &nbsp; Zoom:
+      <span id="zoomBtns">
+        <button data-zoom="1" class="active">1×</button>
+        <button data-zoom="2">2×</button>
+        <button data-zoom="4">4×</button>
+        <button data-zoom="8">8×</button>
+      </span>
+    </div>
 
-<div class="row" style="margin-top:12px;">
-  <div>
-    <h4>Original</h4>
-    <canvas id="origCanvas"></canvas>
-  </div>
-  <div>
-    <h4>Processed</h4>
-    <canvas id="outCanvas"></canvas>
-  </div>
-  <div style="min-width:420px;">
-    <h4>Colors found (top first)</h4>
-    <div id="colorsList" class="colors-list"></div>
+    <div id="canvasPanels">
+      <div id="sideBySideView">
+        <div class="canvas-pane"><span class="pane-label">Original</span><div class="canvas-wrap"><canvas id="origCanvas"></canvas></div></div>
+        <div class="canvas-pane"><span class="pane-label">Processed</span><div class="canvas-wrap"><canvas id="outCanvas"></canvas></div></div>
+      </div>
+
+      <div id="compareView">
+        <div id="compareLabels"><span>◀ Original</span><span>Processed ▶</span></div>
+        <div id="compareContainer">
+          <canvas id="compareOrigCanvas"></canvas>
+          <canvas id="compareOutCanvas" style="clip-path:inset(0 50% 0 0)"></canvas>
+          <div id="compareDivider" style="left:50%"></div>
+        </div>
+      </div>
+
+      <div id="spinner">Processing…</div>
+    </div>
+
+    <div id="paletteSection">
+      <div id="paletteToggle">
+        <span>Genesis 512-color palette</span>
+        <span id="paletteMeta">0 highlighted — click to expand ▼</span>
+      </div>
+      <div id="paletteBody"><div id="paletteGrid"></div></div>
+    </div>
   </div>
 </div>
-
-<h4>512-color Genesis Palette (allowed will be highlighted)</h4>
-<div id="paletteGrid" class="palette-grid"></div>
 
 <script>
-// --- Helper: convert hex to [r,g,b]
 function hexToRgb(hex) {
-  const m = hex.replace('#','');
-  return [parseInt(m.substring(0,2),16), parseInt(m.substring(2,4),16), parseInt(m.substring(4,6),16)];
+  const m=hex.replace('#','');
+  return [parseInt(m.substring(0,2),16),parseInt(m.substring(2,4),16),parseInt(m.substring(4,6),16)];
 }
+function colorKey(r,g,b) { return '#'+[r,g,b].map(x=>x.toString(16).padStart(2,'0')).join(''); }
+function clamp(v,lo,hi) { return Math.max(lo,Math.min(hi,v)); }
 
-// Full Genesis palette (512 entries)
 const ORIGINAL_PALETTE = [
   "#000000","#000048","#000090","#0000d8","#200000","#200048","#200090","#2000d8","#480000","#480048","#480090","#4800d8","#680000","#680048","#680090","#6800d8",
   "#900000","#900048","#900090","#9000d8","#b00000","#b00048","#b00090","#b000d8","#d80000","#d80048","#d80090","#d800d8","#f80000","#f80048","#f80090","#f800d8",
@@ -163,799 +156,209 @@ const ORIGINAL_PALETTE = [
 const PALETTE = ORIGINAL_PALETTE.slice();
 const PALETTE_RGB = PALETTE.map(hexToRgb);
 
-const fileInput = document.getElementById('fileInput');
-const processBtn = document.getElementById('processBtn');
-const downloadBtn = document.getElementById('downloadBtn');
-const ditherSelect = document.getElementById('ditherSelect');
-const limitCheck = document.getElementById('limitCheck');
-const maxColorsInput = document.getElementById('maxColorsInput');
-const diverseCheck = document.getElementById('diverseCheck');
-const rgbControlsDiv = document.getElementById('rgbControls');
-const rgbBalanceCheck = document.getElementById('rgbBalanceCheck');
-const rgbBalanceAxis = document.getElementById('rgbBalanceAxis');
-const rgbBalanceStrength = document.getElementById('rgbBalanceStrength');
-const origCanvas = document.getElementById('origCanvas');
-const outCanvas = document.getElementById('outCanvas');
-const colorsListDiv = document.getElementById('colorsList');
-const origCountSpan = document.getElementById('origCount');
-const procCountSpan = document.getElementById('procCount');
+const fileInput        = document.getElementById('fileInput');
+const processBtn       = document.getElementById('processBtn');
+const downloadBtn      = document.getElementById('downloadBtn');
+const limitCheck       = document.getElementById('limitCheck');
+const maxColorsInput   = document.getElementById('maxColorsInput');
+const origCanvas       = document.getElementById('origCanvas');
+const outCanvas        = document.getElementById('outCanvas');
+const compareOrigCanvas= document.getElementById('compareOrigCanvas');
+const compareOutCanvas = document.getElementById('compareOutCanvas');
+const compareContainer = document.getElementById('compareContainer');
+const compareDivider   = document.getElementById('compareDivider');
+const origCountSpan    = document.getElementById('origCount');
+const procCountSpan    = document.getElementById('procCount');
 const allowedCountSpan = document.getElementById('allowedCount');
-const paletteGrid = document.getElementById('paletteGrid');
+const imgDimsSpan      = document.getElementById('imgDims');
+const paletteGrid      = document.getElementById('paletteGrid');
+const spinner          = document.getElementById('spinner');
+const dropZone         = document.getElementById('dropZone');
+const procTime         = document.getElementById('procTime');
+const paletteMeta      = document.getElementById('paletteMeta');
+const downloadScale    = document.getElementById('downloadScale');
 
+let currentImage=null, currentImageName='sprite', latestMapping=null, currentZoom=1;
+
+// Build palette grid
 PALETTE.forEach(h => {
-  const d = document.createElement('div');
-  d.className = 'swatch';
-  d.title = h;
-  d.style.background = h;
+  const d=document.createElement('div');
+  d.className='swatch'; d.title=h; d.style.background=h;
   paletteGrid.appendChild(d);
 });
+document.getElementById('paletteToggle').addEventListener('click', () => {
+  const body=document.getElementById('paletteBody');
+  body.classList.toggle('open');
+  paletteMeta.textContent=paletteMeta.textContent.replace(/▼|▲/, body.classList.contains('open')?'▲':'▼');
+});
 
-let currentImage = null;
-let currentImageName = 'sprite';
-let latestMapping = null;
-
-function colorKey(r,g,b) {
-  return '#' + [r,g,b].map(x => x.toString(16).padStart(2,'0')).join('');
-}
-
-function findNearestInList(r,g,b, listRGB) {
-  let bestIdx = 0;
-  let bestDist = Infinity;
+function findNearestInList(r,g,b,listRGB) {
+  let bestIdx=0, bestDist=Infinity;
   for (let i=0;i<listRGB.length;i++) {
-    const p = listRGB[i];
-    const dr = p[0]-r, dg = p[1]-g, db = p[2]-b;
-    const dist = dr*dr + dg*dg + db*db;
-    if (dist < bestDist) {
-      bestDist = dist; bestIdx = i;
-    }
-  }
-  return bestIdx;
-}
-
-// Perceptual nearest (YCbCr distance)
-function rgbToYCbCr(r,g,b) {
-  // ITU-R BT.601
-  const y  =  0.299*r + 0.587*g + 0.114*b;
-  const cb = -0.168736*r -0.331264*g + 0.5*b + 128;
-  const cr =  0.5*r -0.418688*g -0.081312*b + 128;
-  return [y, cb, cr];
-}
-function findNearestInListYCbCr(r,g,b, listRGB) {
-  const a = rgbToYCbCr(r,g,b);
-  let bestIdx = 0, bestDist = Infinity;
-  for (let i=0;i<listRGB.length;i++) {
-    const p = listRGB[i];
-    const bval = rgbToYCbCr(p[0],p[1],p[2]);
-    const dy = a[0]-bval[0], dcb = a[1]-bval[1], dcr = a[2]-bval[2];
-    const dist = dy*dy + dcb*dcb + dcr*dcr;
-    if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+    const p=listRGB[i], d=(p[0]-r)**2+(p[1]-g)**2+(p[2]-b)**2;
+    if (d<bestDist) { bestDist=d; bestIdx=i; }
   }
   return bestIdx;
 }
 
 function buildHistogram(imgData) {
-  const data = imgData.data;
-  const counts = new Map();
+  const data=imgData.data, counts=new Map();
   for (let i=0;i<data.length;i+=4) {
-    const a = data[i+3];
-    if (a === 0) continue;
-    const r = data[i], g = data[i+1], b = data[i+2];
-    const key = colorKey(r,g,b);
-    counts.set(key, (counts.get(key)||0) + 1);
+    if (data[i+3]===0) continue;
+    const k=colorKey(data[i],data[i+1],data[i+2]);
+    counts.set(k,(counts.get(k)||0)+1);
   }
   return counts;
 }
 
-// chooseAllowedPaletteIndices: same as previous implementation but using PALETTE and PALETTE_RGB variables above
-function chooseAllowedPaletteIndices(countsMap, maxAllowed, preferDiverse, rgbBalanceMode='none', rgbBalanceStrength=0.5) {
-  const freqPerPaletteIdx = new Map();
-  for (const [hex, cnt] of countsMap.entries()) {
-    const rgb = hexToRgb(hex);
-    const idx = findNearestInList(rgb[0], rgb[1], rgb[2], PALETTE_RGB);
-    freqPerPaletteIdx.set(idx, (freqPerPaletteIdx.get(idx)||0)+cnt);
-  }
-  const candidates = Array.from(new Set(Array.from(freqPerPaletteIdx.keys())));
-  if (candidates.length === 0) {
-    for (let i=0;i<PALETTE.length;i++) candidates.push(i);
-  }
-  if (!preferDiverse) {
-    const sorted = Array.from(freqPerPaletteIdx.entries()).sort((a,b)=>b[1]-a[1]);
-    const chosen = sorted.slice(0, maxAllowed).map(x=>x[0]);
-    if (chosen.length < maxAllowed) {
-      for (let i=0;i<PALETTE.length && chosen.length<maxAllowed;i++) {
-        if (!chosen.includes(i)) chosen.push(i);
-      }
-    }
-    return chosen;
-  }
-
-  // Diversity-aware greedy selection (with optional RGB-balance)
-  const freqArr = {};
-  let maxFreq = 0;
-  for (const idx of candidates) {
-    const f = freqPerPaletteIdx.get(idx) || 0;
-    freqArr[idx] = f;
-    if (f > maxFreq) maxFreq = f;
-  }
-  const freqNorm = {};
-  for (const idx of candidates) {
-    freqNorm[idx] = maxFreq === 0 ? 0 : (freqArr[idx] / maxFreq);
-  }
-
-  const maxPossibleDist = 255*255*3;
-  const distCache = {};
-  for (let i=0;i<PALETTE_RGB.length;i++) {
-    distCache[i] = {};
-  }
-  for (let i=0;i<PALETTE_RGB.length;i++) {
-    for (let j=0;j<PALETTE_RGB.length;j++) {
-      const a = PALETTE_RGB[i], b = PALETTE_RGB[j];
-      const dr = a[0]-b[0], dg = a[1]-b[1], db = a[2]-b[2];
-      distCache[i][j] = dr*dr + dg*dg + db*db;
-    }
-  }
-
-  // If rgbBalanceMode is 'auto', compute dominant channel across the image
-  let balanceChannel = null; // 0=r,1=g,2=b
-  if (rgbBalanceMode === 'auto') {
-    let sumR = 0, sumG = 0, sumB = 0;
-    for (const [hex, cnt] of countsMap.entries()) {
-      const [r,g,b] = hexToRgb(hex);
-      sumR += r * cnt;
-      sumG += g * cnt;
-      sumB += b * cnt;
-    }
-    if (sumR >= sumG && sumR >= sumB) balanceChannel = 0;
-    else if (sumG >= sumR && sumG >= sumB) balanceChannel = 1;
-    else balanceChannel = 2;
-  } else if (rgbBalanceMode === 'red') balanceChannel = 0;
-  else if (rgbBalanceMode === 'green') balanceChannel = 1;
-  else if (rgbBalanceMode === 'blue') balanceChannel = 2;
-  else balanceChannel = null;
-
-  // Normalize strength 0..1
-  const strength = Math.max(0, Math.min(1, Number(rgbBalanceStrength) || 0));
-
-  const chosen = [];
-  candidates.sort((a,b)=> (freqArr[b] - freqArr[a]));
-  chosen.push(candidates[0] || 0);
-
-  while (chosen.length < maxAllowed) {
-    let bestIdx = null;
-    let bestScore = -Infinity;
-    for (const idx of candidates) {
-      if (chosen.includes(idx)) continue;
-      let minDist = Infinity;
-      for (const c of chosen) {
-        const d = distCache[idx][c];
-        if (d < minDist) minDist = d;
-      }
-      if (minDist === Infinity) minDist = 0;
-      const distScore = minDist / maxPossibleDist;
-      const freqScore = freqNorm[idx] || 0;
-      let baseScore = 0.6*freqScore + 0.4*distScore;
-
-      // Apply RGB balance bias away from dominant channel: colors with LOWER value in the dominant channel get a bonus.
-      if (balanceChannel !== null && strength > 0) {
-        const channelValue = PALETTE_RGB[idx][balanceChannel] / 255; // 0..1
-        const balanceScore = 1 - channelValue; // higher when palette color has less of the dominant channel
-        baseScore = baseScore + (strength * 0.8) * (balanceScore - 0.5);
-      }
-
-      const score = baseScore;
-      if (score > bestScore) {
-        bestScore = score;
-        bestIdx = idx;
-      }
-    }
-    if (bestIdx === null) break;
-    chosen.push(bestIdx);
-    if (chosen.length === candidates.length) break;
-  }
-
-  if (chosen.length < maxAllowed) {
-    for (let i=0;i<PALETTE.length && chosen.length<maxAllowed;i++) {
-      if (!chosen.includes(i)) chosen.push(i);
-    }
-  }
-
-  return chosen.slice(0, maxAllowed);
-}
-
-// Ordered dither matrices
-const bayer2 = [[0,2],[3,1]];
-const bayer3 = [[0,7,3],[6,5,1],[4,2,8]];
-const bayer4 = [[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
-const bayer8 = [
-  [0,32,8,40,2,34,10,42],
-  [48,16,56,24,50,18,58,26],
-  [12,44,4,36,14,46,6,38],
-  [60,28,52,20,62,30,54,22],
-  [3,35,11,43,1,33,9,41],
-  [51,19,59,27,49,17,57,25],
-  [15,47,7,39,13,45,5,37],
-  [61,29,55,23,61,29,53,21]
-];
-const bayer16 = (function(){
-  const m = [];
-  for (let y=0;y<16;y++){
-    const row = [];
-    for (let x=0;x<16;x++){
-      row.push((bayer8[y%8][x%8]*4 + Math.floor((y/8))*2 + Math.floor((x/8)))%256);
-    }
-    m.push(row);
-  }
-  return m;
-})();
-
-// Small blue-noise 8×8 tile (precomputed-ish). Values 0..63
-const blueNoise8 = [
-  [ 36,  4, 44, 28,  2, 46, 30, 14],
-  [ 16, 52,  8, 40, 48, 10, 38, 22],
-  [ 56, 24, 60, 32, 20, 54, 34, 12],
-  [ 40,  6, 42, 18,  0, 50, 26,  8],
-  [  1, 33, 13, 45, 11, 35, 25, 57],
-  [ 17, 49, 19, 51, 15, 47, 27, 59],
-  [  5, 37, 21, 53,  7, 39, 23, 55],
-  [ 29, 61, 41, 63, 31, 62, 43, 58]
-];
-
-// applyOrdered generalized
-function applyOrdered(imgData, allowedIdxs, matrix, strength=16) {
-  const width = imgData.width, height = imgData.height;
-  const data = imgData.data;
-  const allowedRGB = allowedIdxs.map(i=>PALETTE_RGB[i]);
-  const n = matrix.length;
-  const denom = Math.max(1, n*n);
-  for (let y=0;y<height;y++) {
-    for (let x=0;x<width;x++) {
-      const i = (y*width + x)*4;
-      const a = data[i+3];
-      if (a === 0) continue;
-      const thresh = (matrix[y % n][x % n] + 0.5)/denom - 0.5;
-      let r = data[i], g = data[i+1], b = data[i+2];
-      r = Math.max(0, Math.min(255, Math.round(r + thresh*strength)));
-      g = Math.max(0, Math.min(255, Math.round(g + thresh*strength)));
-      b = Math.max(0, Math.min(255, Math.round(b + thresh*strength)));
-      const idx = findNearestInList(r,g,b, allowedRGB);
-      const pal = allowedRGB[idx];
-      data[i] = pal[0]; data[i+1] = pal[1]; data[i+2] = pal[2];
-    }
-  }
-  return imgData;
-}
-
-// threshold dither
-function applyThreshold(imgData, allowedIdxs, threshold=128) {
-  const data = imgData.data;
-  const allowedRGB = allowedIdxs.map(i=>PALETTE_RGB[i]);
-  for (let i=0;i<data.length;i+=4) {
-    const a = data[i+3];
-    if (a === 0) continue;
-    const lum = 0.2126*data[i] + 0.7152*data[i+1] + 0.0722*data[i+2];
-    const r = lum >= threshold ? data[i] : Math.max(0, data[i]-80);
-    const g = lum >= threshold ? data[i+1] : Math.max(0, data[i+1]-80);
-    const b = lum >= threshold ? data[i+2] : Math.max(0, data[i+2]-80);
-    const idx = findNearestInList(r,g,b, allowedRGB);
-    const pal = allowedRGB[idx];
-    data[i]=pal[0]; data[i+1]=pal[1]; data[i+2]=pal[2];
-  }
-  return imgData;
-}
-
-// General error-diffusion (non-serpentine)
-function applyErrorDiffusion(imgData, allowedIdxs, kernel) {
-  const width = imgData.width, height = imgData.height;
-  const data = imgData.data;
-  const allowedRGB = allowedIdxs.map(i=>PALETTE_RGB[i]);
-  const buf = new Float32Array(data.length);
-  for (let i=0;i<data.length;i++) buf[i] = data[i];
-  for (let y=0;y<height;y++) {
-    for (let x=0;x<width;x++) {
-      const idx = (y*width + x)*4;
-      const a = buf[idx+3];
-      if (a === 0) continue;
-      const oldR = buf[idx], oldG = buf[idx+1], oldB = buf[idx+2];
-      const nearestIdx = findNearestInList(oldR, oldG, oldB, allowedRGB);
-      const pal = allowedRGB[nearestIdx];
-      buf[idx] = pal[0]; buf[idx+1] = pal[1]; buf[idx+2] = pal[2];
-      const errR = oldR - pal[0];
-      const errG = oldG - pal[1];
-      const errB = oldB - pal[2];
-      for (const k of kernel) {
-        const nx = x + k.x, ny = y + k.y;
-        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
-        const nidx = (ny*width + nx)*4;
-        buf[nidx]   = buf[nidx]   + errR * k.w;
-        buf[nidx+1] = buf[nidx+1] + errG * k.w;
-        buf[nidx+2] = buf[nidx+2] + errB * k.w;
-      }
-    }
-  }
-  for (let i=0;i<data.length;i++) {
-    if (i%4===3) data[i] = buf[i]; else data[i] = Math.max(0, Math.min(255, Math.round(buf[i])));
-  }
-  return imgData;
-}
-
-// Serpentine error diffusion (mirrors kernel on odd rows)
-function applyErrorDiffusionSerpentine(imgData, allowedIdxs, kernel) {
-  const width = imgData.width, height = imgData.height;
-  const data = imgData.data;
-  const allowedRGB = allowedIdxs.map(i=>PALETTE_RGB[i]);
-  const buf = new Float32Array(data.length);
-  for (let i=0;i<data.length;i++) buf[i] = data[i];
-
-  for (let y=0; y<height; y++) {
-    const leftToRight = (y % 2 === 0);
-    if (leftToRight) {
-      for (let x=0; x<width; x++) {
-        const idx = (y*width + x)*4;
-        const a = buf[idx+3];
-        if (a === 0) continue;
-        const oldR = buf[idx], oldG = buf[idx+1], oldB = buf[idx+2];
-        const nearestIdx = findNearestInList(oldR, oldG, oldB, allowedRGB);
-        const pal = allowedRGB[nearestIdx];
-        buf[idx] = pal[0]; buf[idx+1] = pal[1]; buf[idx+2] = pal[2];
-        const errR = oldR - pal[0], errG = oldG - pal[1], errB = oldB - pal[2];
-        for (const k of kernel) {
-          const nx = x + k.x, ny = y + k.y;
-          if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
-          const nidx = (ny*width + nx)*4;
-          buf[nidx]   = buf[nidx]   + errR * k.w;
-          buf[nidx+1] = buf[nidx+1] + errG * k.w;
-          buf[nidx+2] = buf[nidx+2] + errB * k.w;
-        }
-      }
-    } else {
-      for (let x=width-1; x>=0; x--) {
-        const idx = (y*width + x)*4;
-        const a = buf[idx+3];
-        if (a === 0) continue;
-        const oldR = buf[idx], oldG = buf[idx+1], oldB = buf[idx+2];
-        const nearestIdx = findNearestInList(oldR, oldG, oldB, allowedRGB);
-        const pal = allowedRGB[nearestIdx];
-        buf[idx] = pal[0]; buf[idx+1] = pal[1]; buf[idx+2] = pal[2];
-        const errR = oldR - pal[0], errG = oldG - pal[1], errB = oldB - pal[2];
-        for (const k of kernel) {
-          const nx = x - k.x, ny = y + k.y; // mirror x offset
-          if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
-          const nidx = (ny*width + nx)*4;
-          buf[nidx]   = buf[nidx]   + errR * k.w;
-          buf[nidx+1] = buf[nidx+1] + errG * k.w;
-          buf[nidx+2] = buf[nidx+2] + errB * k.w;
-        }
-      }
-    }
-  }
-
-  for (let i=0;i<data.length;i++) {
-    if (i%4===3) data[i] = buf[i]; else data[i] = Math.max(0, Math.min(255, Math.round(buf[i])));
-  }
-  return imgData;
-}
-
-// Dot-diffusion (simple block-based approach)
-function applyDotDiffusion(imgData, allowedIdxs, blockSize=8) {
-  const width = imgData.width, height = imgData.height;
-  const data = imgData.data;
-  const allowedRGB = allowedIdxs.map(i=>PALETTE_RGB[i]);
-  const buf = new Float32Array(data.length);
-  for (let i=0;i<data.length;i++) buf[i] = data[i];
-
-  for (let by=0; by<height; by+=blockSize) {
-    for (let bx=0; bx<width; bx+=blockSize) {
-      // process block left-to-right, top-to-bottom but confine error within block
-      for (let y=by; y<Math.min(by+blockSize, height); y++) {
-        for (let x=bx; x<Math.min(bx+blockSize, width); x++) {
-          const idx = (y*width + x)*4;
-          const a = buf[idx+3];
-          if (a === 0) continue;
-          const oldR = buf[idx], oldG = buf[idx+1], oldB = buf[idx+2];
-          const nearestIdx = findNearestInList(oldR, oldG, oldB, allowedRGB);
-          const pal = allowedRGB[nearestIdx];
-          buf[idx] = pal[0]; buf[idx+1] = pal[1]; buf[idx+2] = pal[2];
-          const errR = oldR - pal[0], errG = oldG - pal[1], errB = oldB - pal[2];
-          // distribute to neighbors inside the block with a simple kernel
-          const neighbors = [
-            {x:1,y:0,w:0.5}, {x:0,y:1,w:0.3}, {x:1,y:1,w:0.2}
-          ];
-          for (const n of neighbors) {
-            const nx = x + n.x, ny = y + n.y;
-            if (nx < bx || nx >= Math.min(bx+blockSize,width) || ny < by || ny >= Math.min(by+blockSize,height)) continue;
-            const nidx = (ny*width + nx)*4;
-            buf[nidx]   = buf[nidx]   + errR * n.w;
-            buf[nidx+1] = buf[nidx+1] + errG * n.w;
-            buf[nidx+2] = buf[nidx+2] + errB * n.w;
-          }
-        }
-      }
-    }
-  }
-
-  for (let i=0;i<data.length;i++) {
-    if (i%4===3) data[i] = buf[i]; else data[i] = Math.max(0, Math.min(255, Math.round(buf[i])));
-  }
-  return imgData;
-}
-
-// Riemersma-style diffusion using Morton (Z-order) curve as a space-filling traversal
-function mortonOrderIndices(width, height) {
-  const order = [];
-  const maxDim = Math.max(width, height);
-  let p = 1;
-  while (p < maxDim) p <<= 1;
-  const total = p*p;
-  for (let d=0; d<total; d++) {
-    let x = 0, y = 0;
-    let code = d;
-    for (let i=0; (1<<i) <= p; i++) {
-      const bitx = (code >> (2*i)) & 1;
-      const bity = (code >> (2*i+1)) & 1;
-      x |= (bitx << i);
-      y |= (bity << i);
-    }
-    if (x < width && y < height) order.push(y*width + x);
-  }
-  return order;
-}
-
-function applyRiemersma(imgData, allowedIdxs, kernel) {
-  const width = imgData.width, height = imgData.height;
-  const data = imgData.data;
-  const allowedRGB = allowedIdxs.map(i=>PALETTE_RGB[i]);
-  const buf = new Float32Array(data.length);
-  for (let i=0;i<data.length;i++) buf[i] = data[i];
-
-  const order = mortonOrderIndices(width, height);
-  for (let oi=0; oi<order.length; oi++) {
-    const lin = order[oi];
-    const idx = lin*4;
-    const a = buf[idx+3];
-    if (a === 0) continue;
-    const oldR = buf[idx], oldG = buf[idx+1], oldB = buf[idx+2];
-    const nearestIdx = findNearestInList(oldR, oldG, oldB, allowedRGB);
-    const pal = allowedRGB[nearestIdx];
-    buf[idx] = pal[0]; buf[idx+1] = pal[1]; buf[idx+2] = pal[2];
-    const errR = oldR - pal[0], errG = oldG - pal[1], errB = oldB - pal[2];
-    const K = 6;
-    for (let k=1;k<=K;k++) {
-      const oi2 = oi + k;
-      if (oi2 >= order.length) break;
-      const lin2 = order[oi2];
-      const nidx = lin2*4;
-      const w = (K - k + 1) / ((K*(K+1))/2);
-      buf[nidx]   = buf[nidx]   + errR * w;
-      buf[nidx+1] = buf[nidx+1] + errG * w;
-      buf[nidx+2] = buf[nidx+2] + errB * w;
-    }
-  }
-
-  for (let i=0;i<data.length;i++) {
-    if (i%4===3) data[i] = buf[i]; else data[i] = Math.max(0, Math.min(255, Math.round(buf[i])));
-  }
-  return imgData;
-}
-
-// Perceptual mapping with Floyd diffusion but using YCbCr distance for nearest
-function applyPerceptualFloyd(imgData, allowedIdxs) {
-  const width = imgData.width, height = imgData.height;
-  const data = imgData.data;
-  const allowedRGB = allowedIdxs.map(i=>PALETTE_RGB[i]);
-  const buf = new Float32Array(data.length);
-  for (let i=0;i<data.length;i++) buf[i] = data[i];
-  const kernel = KERNELS.floyd;
-  for (let y=0;y<height;y++) {
-    for (let x=0;x<width;x++) {
-      const idx = (y*width + x)*4;
-      const a = buf[idx+3];
-      if (a === 0) continue;
-      const oldR = buf[idx], oldG = buf[idx+1], oldB = buf[idx+2];
-      const nearestIdx = findNearestInListYCbCr(oldR, oldG, oldB, allowedRGB);
-      const pal = allowedRGB[nearestIdx];
-      buf[idx] = pal[0]; buf[idx+1] = pal[1]; buf[idx+2] = pal[2];
-      const errR = oldR - pal[0], errG = oldG - pal[1], errB = oldB - pal[2];
-      for (const k of kernel) {
-        const nx = x + k.x, ny = y + k.y;
-        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
-        const nidx = (ny*width + nx)*4;
-        buf[nidx]   = buf[nidx]   + errR * k.w;
-        buf[nidx+1] = buf[nidx+1] + errG * k.w;
-        buf[nidx+2] = buf[nidx+2] + errB * k.w;
-      }
-    }
-  }
-  for (let i=0;i<data.length;i++) {
-    if (i%4===3) data[i] = buf[i]; else data[i] = Math.max(0, Math.min(255, Math.round(buf[i])));
-  }
-  return imgData;
-}
-
-// Removed applyChannelSeparated
-
-// Blue-noise tiling (apply ordered threshold from blueNoise8)
-function applyBlueNoise(imgData, allowedIdxs) {
-  const width = imgData.width, height = imgData.height;
-  const data = imgData.data;
-  const allowedRGB = allowedIdxs.map(i=>PALETTE_RGB[i]);
-  const n = blueNoise8.length;
-  const denom = 64;
-  for (let y=0;y<height;y++) {
-    for (let x=0;x<width;x++) {
-      const i = (y*width + x)*4;
-      const a = data[i+3];
-      if (a === 0) continue;
-      const v = blueNoise8[y % n][x % n];
-      const thresh = (v + 0.5)/denom - 0.5;
-      let r = data[i], g = data[i+1], b = data[i+2];
-      r = Math.max(0, Math.min(255, Math.round(r + thresh*18)));
-      g = Math.max(0, Math.min(255, Math.round(g + thresh*18)));
-      b = Math.max(0, Math.min(255, Math.round(b + thresh*18)));
-      const idx = findNearestInList(r,g,b, allowedRGB);
-      const pal = allowedRGB[idx];
-      data[i] = pal[0]; data[i+1] = pal[1]; data[i+2] = pal[2];
-    }
-  }
-  return imgData;
-}
-
-// multipass hybrid: ordered then serpentine floyd
-function applyMultipassHybrid(imgData, allowedIdxs) {
-  let tmp = applyOrdered(imgData, allowedIdxs, bayer4, 12);
-  tmp = applyErrorDiffusionSerpentine(tmp, allowedIdxs, KERNELS.floyd);
-  return tmp;
-}
-
-// General random noise
-function applyRandomNoise(imgData, allowedIdxs) {
-  const data = imgData.data;
-  const allowedRGB = allowedIdxs.map(i=>PALETTE_RGB[i]);
-  for (let i=0;i<data.length;i+=4) {
-    const a = data[i+3];
-    if (a === 0) continue;
-    const r = Math.max(0, Math.min(255, Math.round(data[i] + (Math.random()-0.5)*32)));
-    const g = Math.max(0, Math.min(255, Math.round(data[i+1] + (Math.random()-0.5)*32)));
-    const b = Math.max(0, Math.min(255, Math.round(data[i+2] + (Math.random()-0.5)*32)));
-    const idx = findNearestInList(r,g,b, allowedRGB);
-    const pal = allowedRGB[idx];
-    data[i] = pal[0]; data[i+1] = pal[1]; data[i+2] = pal[2];
-  }
-  return imgData;
-}
-
-function mapWithoutDither(imgData, allowedIdxs) {
-  const data = imgData.data;
-  const allowedRGB = allowedIdxs.map(i=>PALETTE_RGB[i]);
-  for (let i=0;i<data.length;i+=4) {
-    const a = data[i+3];
-    if (a === 0) continue;
-    const r = data[i], g = data[i+1], b = data[i+2];
-    const idx = findNearestInList(r,g,b, allowedRGB);
-    const pal = allowedRGB[idx];
-    data[i] = pal[0]; data[i+1] = pal[1]; data[i+2] = pal[2];
-  }
-  return imgData;
-}
-
 function countUniqueColors(imgData) {
-  const data = imgData.data;
-  const s = new Set();
-  for (let i=0;i<data.length;i+=4) {
-    const a = data[i+3];
-    if (a === 0) continue;
-    s.add(colorKey(data[i], data[i+1], data[i+2]));
-  }
+  const data=imgData.data, s=new Set();
+  for (let i=0;i<data.length;i+=4) if (data[i+3]!==0) s.add(colorKey(data[i],data[i+1],data[i+2]));
   return s.size;
 }
 
+function chooseAllowedPaletteIndices(countsMap, maxAllowed) {
+  const freq=new Map();
+  for (const [hex,cnt] of countsMap.entries()) {
+    const rgb=hexToRgb(hex), idx=findNearestInList(rgb[0],rgb[1],rgb[2],PALETTE_RGB);
+    freq.set(idx,(freq.get(idx)||0)+cnt);
+  }
+  const chosen=Array.from(freq.entries()).sort((a,b)=>b[1]-a[1]).slice(0,maxAllowed).map(x=>x[0]);
+  for (let i=0;i<PALETTE.length&&chosen.length<maxAllowed;i++) if (!chosen.includes(i)) chosen.push(i);
+  return chosen;
+}
+
+function mapPixels(imgData, allowedIdxs) {
+  const {data}=imgData, ar=allowedIdxs.map(i=>PALETTE_RGB[i]);
+  for (let i=0;i<data.length;i+=4) {
+    if (data[i+3]===0) continue;
+    const p=ar[findNearestInList(data[i],data[i+1],data[i+2],ar)];
+    data[i]=p[0]; data[i+1]=p[1]; data[i+2]=p[2];
+  }
+  return imgData;
+}
+
 function highlightAllowed(allowedIdxs) {
-  Array.from(paletteGrid.children).forEach((el, i) => {
-    el.classList.toggle('highlight', allowedIdxs.includes(i));
+  Array.from(paletteGrid.children).forEach((el,i)=>el.classList.toggle('highlight',allowedIdxs.includes(i)));
+  paletteMeta.textContent=`${allowedIdxs.length} highlighted — click to expand ▼`;
+}
+
+function setZoom(z) {
+  currentZoom=z;
+  document.querySelectorAll('#zoomBtns button').forEach(b=>b.classList.toggle('active',+b.dataset.zoom===z));
+  [origCanvas,outCanvas,compareOrigCanvas,compareOutCanvas].forEach(c=>{
+    if (c.width>0) { c.style.width=c.width*z+'px'; c.style.height=c.height*z+'px'; }
   });
+  updateCompareSize();
 }
 
-function updateColorsList(countsMap, mappingToPalette) {
-  colorsListDiv.innerHTML = '';
-  const items = Array.from(countsMap.entries()).sort((a,b)=>b[1]-a[1]);
-  const limitShow = 300;
-  for (let i=0;i<Math.min(items.length, limitShow); i++) {
-    const [hex, cnt] = items[i];
-    const mapped = mappingToPalette.get(hex);
-    const row = document.createElement('div');
-    row.style.display='flex'; row.style.alignItems='center'; row.style.gap='8px'; row.style.marginBottom='6px';
-    row.innerHTML = `
-      <div style="width:24px;height:24px;border:1px solid #ccc;background:${hex}"></div>
-      <div style="min-width:72px;font-family:monospace">${hex}</div>
-      <div style="min-width:60px">x${cnt}</div>
-      <div style="width:24px;height:24px;border:1px solid #ccc;background:${mapped.hex}"></div>
-      <div style="font-family:monospace">${mapped.hex}</div>
-      <div style="flex:1;text-align:right">palette idx: ${mapped.idx}</div>
-    `;
-    colorsListDiv.appendChild(row);
-  }
-  if (items.length > limitShow) {
-    const more = document.createElement('div');
-    more.textContent = `... and ${items.length - limitShow} more unique colors (not shown)`;
-    colorsListDiv.appendChild(more);
-  }
-}
-
-function processCurrentImage() {
+async function processCurrentImage() {
   if (!currentImage) return;
-  const img = currentImage;
-  origCanvas.width = img.width; origCanvas.height = img.height;
-  outCanvas.width = img.width; outCanvas.height = img.height;
-  const octx = origCanvas.getContext('2d');
-  const actx = outCanvas.getContext('2d');
-  octx.clearRect(0,0,origCanvas.width, origCanvas.height);
-  octx.drawImage(img,0,0);
-  actx.clearRect(0,0,outCanvas.width, outCanvas.height);
-  actx.drawImage(img,0,0);
+  spinner.classList.add('active');
+  await new Promise(r=>setTimeout(r,0));
+  const t0=performance.now(), img=currentImage;
 
-  const imgData = octx.getImageData(0,0,origCanvas.width, origCanvas.height);
-  const counts = buildHistogram(imgData);
-  origCountSpan.textContent = counts.size;
+  [origCanvas,outCanvas,compareOrigCanvas,compareOutCanvas].forEach(c=>{c.width=img.width;c.height=img.height;});
+  origCanvas.getContext('2d').drawImage(img,0,0);
+  compareOrigCanvas.getContext('2d').drawImage(img,0,0);
 
-  let allowedIdxs = [...Array(PALETTE.length).keys()];
-  if (limitCheck.checked) {
-    const maxC = Math.max(2, Math.min(512, parseInt(maxColorsInput.value) || 32));
-    const preferDiverse = !!diverseCheck.checked;
-    const rgbBalanceEnabled = !!rgbBalanceCheck.checked && preferDiverse; // only honor if diverse enabled
-    const rgbMode = rgbBalanceEnabled ? (rgbBalanceAxis.value || 'auto') : 'none';
-    const rgbStrength = rgbBalanceEnabled ? (parseInt(rgbBalanceStrength.value || 50)/100.0) : 0.0;
-    allowedIdxs = chooseAllowedPaletteIndices(counts, maxC, preferDiverse, rgbMode, rgbStrength);
-    allowedCountSpan.textContent = allowedIdxs.length;
-  } else {
-    allowedCountSpan.textContent = PALETTE.length;
-  }
+  const counts=buildHistogram(origCanvas.getContext('2d').getImageData(0,0,img.width,img.height));
+  origCountSpan.textContent=counts.size;
+  imgDimsSpan.textContent=`${img.width}×${img.height}`;
+
+  let allowedIdxs=[...Array(PALETTE.length).keys()];
+  if (limitCheck.checked) allowedIdxs=chooseAllowedPaletteIndices(counts,clamp(parseInt(maxColorsInput.value)||32,2,512));
+  allowedCountSpan.textContent=allowedIdxs.length;
   highlightAllowed(allowedIdxs);
 
-  const mappingToPalette = new Map();
-  for (const [hex, cnt] of counts.entries()) {
-    const rgb = hexToRgb(hex);
-    const allowedRGB = allowedIdxs.map(i=>PALETTE_RGB[i]);
-    const nearestRelIdx = findNearestInList(rgb[0], rgb[1], rgb[2], allowedRGB);
-    const palIdx = allowedIdxs[nearestRelIdx];
-    mappingToPalette.set(hex, { hex: PALETTE[palIdx], idx: palIdx });
-  }
+  const actx=outCanvas.getContext('2d');
+  actx.drawImage(img,0,0);
+  const out=mapPixels(actx.getImageData(0,0,img.width,img.height),allowedIdxs);
+  actx.putImageData(out,0,0);
+  compareOutCanvas.getContext('2d').putImageData(out,0,0);
 
-  let outImageData = octx.getImageData(0,0,origCanvas.width, origCanvas.height);
-  const dither = ditherSelect.value;
-  if (dither === 'none') {
-    outImageData = mapWithoutDither(outImageData, allowedIdxs);
-  } else if (dither === 'ordered_2') {
-    outImageData = applyOrdered(outImageData, allowedIdxs, bayer2);
-  } else if (dither === 'ordered_3') {
-    outImageData = applyOrdered(outImageData, allowedIdxs, bayer3);
-  } else if (dither === 'ordered_4') {
-    outImageData = applyOrdered(outImageData, allowedIdxs, bayer4);
-  } else if (dither === 'ordered_8') {
-    outImageData = applyOrdered(outImageData, allowedIdxs, bayer8);
-  } else if (dither === 'ordered_16') {
-    outImageData = applyOrdered(outImageData, allowedIdxs, bayer16);
-  } else if (dither === 'blue_noise') {
-    outImageData = applyBlueNoise(outImageData, allowedIdxs);
-  } else if (dither === 'threshold') {
-    outImageData = applyThreshold(outImageData, allowedIdxs);
-  } else if (dither === 'random') {
-    outImageData = applyRandomNoise(outImageData, allowedIdxs);
-  } else if (dither === 'atkinson') {
-    outImageData = applyErrorDiffusion(outImageData, allowedIdxs, KERNELS.atkinson);
-  } else if (dither === 'burkes') {
-    outImageData = applyErrorDiffusion(outImageData, allowedIdxs, KERNELS.burkes);
-  } else if (dither === 'jarvis') {
-    outImageData = applyErrorDiffusion(outImageData, allowedIdxs, KERNELS.jarvis);
-  } else if (dither === 'stucki') {
-    outImageData = applyErrorDiffusion(outImageData, allowedIdxs, KERNELS.stucki);
-  } else if (dither === 'sierra') {
-    outImageData = applyErrorDiffusion(outImageData, allowedIdxs, KERNELS.sierra);
-  } else if (dither === 'floyd') {
-    outImageData = applyErrorDiffusion(outImageData, allowedIdxs, KERNELS.floyd);
-  } else if (dither === 'serpentine_floyd') {
-    outImageData = applyErrorDiffusionSerpentine(outImageData, allowedIdxs, KERNELS.floyd);
-  } else if (dither === 'dot_diffusion') {
-    outImageData = applyDotDiffusion(outImageData, allowedIdxs, 8);
-  } else if (dither === 'riemersma') {
-    outImageData = applyRiemersma(outImageData, allowedIdxs, KERNELS.floyd);
-  } else if (dither === 'perceptual_floyd') {
-    outImageData = applyPerceptualFloyd(outImageData, allowedIdxs);
-  // Removed: else if (dither === 'channel_separated')
-  // Removed: outImageData = applyChannelSeparated(outImageData, allowedIdxs);
-  } else if (dither === 'multipass_hybrid') {
-    outImageData = applyMultipassHybrid(outImageData, allowedIdxs);
-  } else {
-    outImageData = mapWithoutDither(outImageData, allowedIdxs);
-  }
-  actx.putImageData(outImageData, 0, 0);
-
-  const procUnique = countUniqueColors(outImageData);
-  procCountSpan.textContent = procUnique;
-
-  updateColorsList(counts, mappingToPalette);
-  latestMapping = outImageData;
-  downloadBtn.disabled = false;
+  procCountSpan.textContent=countUniqueColors(out);
+  latestMapping=out;
+  downloadBtn.disabled=false;
+  procTime.textContent=Math.round(performance.now()-t0)+'ms';
+  setZoom(currentZoom);
+  spinner.classList.remove('active');
 }
 
-fileInput.addEventListener('change', async (e) => {
-  const file = e.target.files && e.target.files[0];
-  if (!file) return;
-  currentImageName = file.name.replace(/\.[^/.]+$/, "") || 'sprite';
-  const img = new Image();
-  img.src = URL.createObjectURL(file);
+// Compare slider
+function updateCompareSize() {
+  if (!compareOrigCanvas.width) return;
+  const w=compareOrigCanvas.width*currentZoom, h=compareOrigCanvas.height*currentZoom;
+  compareContainer.style.width=w+'px'; compareContainer.style.height=h+'px';
+  [compareOrigCanvas,compareOutCanvas].forEach(c=>{c.style.width=w+'px';c.style.height=h+'px';});
+}
+let dragging=false;
+function setCompareRatio(r) {
+  r=Math.max(0,Math.min(1,r));
+  compareDivider.style.left=(r*100)+'%';
+  compareOutCanvas.style.clipPath=`inset(0 ${((1-r)*100).toFixed(1)}% 0 0)`;
+}
+compareContainer.addEventListener('mousedown',e=>{dragging=true;e.preventDefault();});
+compareContainer.addEventListener('touchstart',()=>dragging=true,{passive:true});
+window.addEventListener('mousemove',e=>{if(!dragging)return;const r=compareContainer.getBoundingClientRect();setCompareRatio((e.clientX-r.left)/r.width);});
+window.addEventListener('touchmove',e=>{if(!dragging)return;const r=compareContainer.getBoundingClientRect();setCompareRatio((e.touches[0].clientX-r.left)/r.width);},{passive:true});
+window.addEventListener('mouseup',()=>dragging=false);
+window.addEventListener('touchend',()=>dragging=false);
+setCompareRatio(0.5);
+
+// View toggle
+document.getElementById('viewSideBySide').addEventListener('click',()=>{
+  document.getElementById('sideBySideView').style.display='flex';
+  document.getElementById('compareView').classList.remove('active');
+  document.getElementById('viewSideBySide').classList.add('active');
+  document.getElementById('viewCompare').classList.remove('active');
+});
+document.getElementById('viewCompare').addEventListener('click',()=>{
+  document.getElementById('sideBySideView').style.display='none';
+  document.getElementById('compareView').classList.add('active');
+  document.getElementById('viewSideBySide').classList.remove('active');
+  document.getElementById('viewCompare').classList.add('active');
+  updateCompareSize();
+});
+
+// Zoom
+document.getElementById('zoomBtns').addEventListener('click',e=>{if(e.target.dataset.zoom)setZoom(+e.target.dataset.zoom);});
+
+// File loading
+async function loadImageFile(file) {
+  if (!file||!file.type.startsWith('image/')) return;
+  currentImageName=file.name.replace(/\.[^/.]+$/,'')||'sprite';
+  const img=new Image();
+  img.src=URL.createObjectURL(file);
   await img.decode();
-  currentImage = img;
-  processBtn.disabled = false;
+  currentImage=img; processBtn.disabled=false;
+  dropZone.textContent=file.name;
   processCurrentImage();
-});
-
-processBtn.addEventListener('click', () => {
-  processCurrentImage();
-});
-
-downloadBtn.addEventListener('click', () => {
-  if (!latestMapping) return;
-  const link = document.createElement('a');
-  link.download = currentImageName + '_genesis.png';
-  const c = document.createElement('canvas');
-  c.width = outCanvas.width; c.height = outCanvas.height;
-  const cx = c.getContext('2d');
-  cx.putImageData(latestMapping, 0, 0);
-  link.href = c.toDataURL('image/png');
-  link.click();
-});
-
-// Show/hide + enable/disable RGB controls based on the "Prefer diverse colors" checkbox
-function updateRgbControlsVisibility() {
-  const show = !!diverseCheck.checked;
-  rgbControlsDiv.style.display = show ? 'flex' : 'none';
-  rgbBalanceCheck.disabled = !show;
-  rgbBalanceAxis.disabled = !show;
-  rgbBalanceStrength.disabled = !show;
 }
-
-// Add listeners to keep UI reactive; processing re-runs when relevant controls change
-[ditherSelect, limitCheck, maxColorsInput, diverseCheck, rgbBalanceCheck, rgbBalanceAxis, rgbBalanceStrength].forEach(el => {
-  el.addEventListener('change', () => {
-    updateRgbControlsVisibility();
-    if (!currentImage) return;
-    processCurrentImage();
-  });
+fileInput.addEventListener('change',e=>loadImageFile(e.target.files[0]));
+['dragenter','dragover'].forEach(ev=>dropZone.addEventListener(ev,e=>{e.preventDefault();dropZone.classList.add('drag-over');}));
+['dragleave','drop'].forEach(ev=>dropZone.addEventListener(ev,e=>{e.preventDefault();dropZone.classList.remove('drag-over');}));
+dropZone.addEventListener('drop',e=>loadImageFile(e.dataTransfer.files[0]));
+document.body.addEventListener('dragover',e=>e.preventDefault());
+document.body.addEventListener('drop',e=>{e.preventDefault();loadImageFile(e.dataTransfer.files[0]);});
+document.addEventListener('paste',e=>{
+  for (const item of e.clipboardData?.items||[]) { if (item.type.startsWith('image/')) { loadImageFile(item.getAsFile()); break; } }
 });
 
-// Kernels (weights sum approximately to 1)
-const KERNELS = {
-  'floyd': [
-    {x:1,y:0,w:7/16}, {x:-1,y:1,w:3/16}, {x:0,y:1,w:5/16}, {x:1,y:1,w:1/16}
-  ],
-  'burkes': [
-    {x:1,y:0,w:8/32}, {x:2,y:0,w:4/32},
-    {x:-2,y:1,w:2/32}, {x:-1,y:1,w:4/32}, {x:0,y:1,w:8/32}, {x:1,y:1,w:4/32}, {x:2,y:1,w:2/32}
-  ],
-  'jarvis': [
-    {x:1,y:0,w:7/48}, {x:2,y:0,w:5/48},
-    {x:-2,y:1,w:3/48},{x:-1,y:1,w:5/48},{x:0,y:1,w:7/48},{x:1,y:1,w:5/48},{x:2,y:1,w:3/48},
-    {x:-2,y:2,w:1/48},{x:-1,y:2,w:3/48},{x:0,y:2,w:5/48},{x:1,y:2,w:3/48},{x:2,y:2,w:1/48}
-  ],
-  'sierra': [
-    {x:1,y:0,w:5/32}, {x:2,y:0,w:3/32},
-    {x:-2,y:1,w:2/32},{x:-1,y:1,w:4/32},{x:0,y:1,w:5/32},{x:1,y:1,w:4/32},{x:2,y:1,w:2/32},
-    {x:-1,y:2,w:2/32},{x:0,y:2,w:3/32},{x:1,y:2,w:2/32}
-  ],
-  'stucki': [
-    {x:1,y:0,w:8/42},{x:2,y:0,w:4/42},
-    {x:-2,y:1,w:2/42},{x:-1,y:1,w:4/42},{x:0,y:1,w:8/42},{x:1,y:1,w:4/42},{x:2,y:1,w:2/42},
-    {x:-2,y:2,w:1/42},{x:-1,y:2,w:2/42},{x:0,y:2,w:4/42},{x:1,y:2,w:2/42},{x:2,y:2,w:1/42}
-  ],
-  'atkinson': [
-    {x:1,y:0,w:1/8},{x:2,y:0,w:1/8},
-    {x:-1,y:1,w:1/8},{x:0,y:1,w:1/8},{x:1,y:1,w:1/8},
-    {x:0,y:2,w:1/8}
-  ]
-};
-
-rgbBalanceAxis.value = 'auto';
-updateRgbControlsVisibility();
-
+// Controls & download
+[limitCheck,maxColorsInput].forEach(el=>el.addEventListener('change',()=>{if(currentImage)processCurrentImage();}));
+processBtn.addEventListener('click',()=>processCurrentImage());
+downloadBtn.addEventListener('click',()=>{
+  if (!latestMapping) return;
+  const scale=parseInt(downloadScale.value)||1;
+  const c=document.createElement('canvas');
+  c.width=outCanvas.width*scale; c.height=outCanvas.height*scale;
+  const cx=c.getContext('2d'); cx.imageSmoothingEnabled=false;
+  cx.drawImage(outCanvas,0,0,c.width,c.height);
+  const a=document.createElement('a');
+  a.download=currentImageName+'_genesis'+(scale>1?'_'+scale+'x':'')+'.png';
+  a.href=c.toDataURL('image/png'); a.click();
+});
 </script>
 </body>
 </html>
